@@ -106,16 +106,17 @@ def _fetch_market_caps_per_ticker(tickers: list) -> dict:
     return result
 
 
-def _fetch_market_caps_via_screener() -> dict:
+def _fetch_screener_data() -> dict:
     """
-    [기본] yfinance screener API로 NASDAQ+NYSE 시총 일괄 조회 (약 20초).
-    사전 필터: 거래소(NASDAQ, NYSE) + 가격 ≥ config.SCREENER_MIN_PRICE.
-    페이지네이션(250개/회)으로 전체 결과 수집.
+    [기본] yfinance screener API로 NASDAQ+NYSE 종목의 시총/거래량/가격을
+    일괄 조회 (약 10초). 사전 필터: 거래소 + 가격 ≥ SCREENER_MIN_PRICE.
 
     Returns:
-        {ticker: market_cap_usd}. screener API 실패 시 빈 dict.
+        {ticker: {'mc': float, 'avg_vol_3m': float, 'price': float,
+                   'turnover': float}}. screener API 실패 시 빈 dict.
+        turnover = avg_vol_3m × price (근사 일평균 거래대금).
     """
-    print(f"📡 yfinance screener API 시총 일괄 조회 시작")
+    print(f"📡 yfinance screener API 일괄 조회 시작")
     start = time.time()
 
     # 거래소 코드:
@@ -144,8 +145,16 @@ def _fetch_market_caps_via_screener() -> dict:
         for q in quotes:
             symbol = q.get('symbol')
             mc = q.get('marketCap')
-            if symbol and mc:
-                result[symbol] = float(mc)
+            avg_vol = q.get('averageDailyVolume3Month')
+            price = q.get('regularMarketPrice')
+            if symbol and mc and avg_vol and price:
+                turnover = float(avg_vol) * float(price)
+                result[symbol] = {
+                    'mc': float(mc),
+                    'avg_vol_3m': float(avg_vol),
+                    'price': float(price),
+                    'turnover': turnover,
+                }
 
         elapsed = time.time() - start
         total_hint = res.get('total', '?')
@@ -157,7 +166,7 @@ def _fetch_market_caps_via_screener() -> dict:
             break
 
     elapsed = time.time() - start
-    print(f"✅ 완료: {len(result)}개 시총 확보 (소요 {elapsed:.0f}s)")
+    print(f"✅ 완료: {len(result)}개 종목 데이터 확보 (소요 {elapsed:.0f}s)")
     return result
 
 
@@ -165,45 +174,54 @@ def _fetch_market_caps_via_screener() -> dict:
 # [핵심] 시총 조회 — 캐시 우선
 # ============================================================================
 
-def get_market_caps(tickers: list, force_refresh: bool = False) -> dict:
+def get_screener_data(tickers: list, force_refresh: bool = False) -> dict:
     """
-    종목 리스트의 시가총액을 반환합니다 (USD).
-
-    - 캐시가 config.MARKET_CAP_CACHE_DAYS일 이내면 캐시에서 반환
-    - 캐시 만료 또는 force_refresh=True면 yfinance 재조회 후 캐시 갱신
-    - 조회 실패 종목은 결과 dict에서 제외 (KeyError로 호출자가 인지)
+    종목 리스트의 screener 데이터(시총/거래량/가격/거래대금)를 반환.
 
     Args:
         tickers: 조회할 티커 리스트
         force_refresh: True면 캐시 무시하고 재조회
 
     Returns:
-        dict: {ticker: market_cap_usd}
+        dict: {ticker: {'mc', 'avg_vol_3m', 'price', 'turnover'}}
     """
     path = config.MARKET_CAP_CACHE_PATH
     cache = _load_cache(path)
     cached_data = cache.get('data', {})
 
     if not force_refresh and _is_fresh(cache, config.MARKET_CAP_CACHE_DAYS):
-        # 캐시가 신선하면 요청 티커 중 캐시에 있는 것만 반환
-        # 누락된 종목은 screener API의 사전 필터(가격/거래소)에 안 잡힌 종목일
-        # 가능성이 높으므로 부분 보충 없이 그대로 둠 (불필요한 API 호출 회피)
         hits = {t: cached_data[t] for t in tickers if t in cached_data}
-        print(f"💾 캐시 사용 ({cache.get('updated_at', '?')}, "
-              f"요청 {len(tickers)} 적중 {len(hits)})")
-        return hits
+        # 하위호환: 캐시가 구버전(시총만 저장된 float)이면 강제 재조회
+        if hits and isinstance(next(iter(hits.values())), (int, float)):
+            print(f"💾 캐시가 구버전 형식 — 재조회")
+        else:
+            print(f"💾 캐시 사용 ({cache.get('updated_at', '?')}, "
+                  f"요청 {len(tickers)} 적중 {len(hits)})")
+            return hits
 
-    # 캐시 만료 또는 force_refresh — screener API로 전체 재조회
-    fresh = _fetch_market_caps_via_screener()
+    # 캐시 만료/구버전/force_refresh — screener API 재조회
+    fresh = _fetch_screener_data()
     if not fresh:
-        # screener 실패 — 폴백: 종목별 조회 (느림, 약 60분)
-        print("⚠️ screener API 실패 — 종목별 조회로 폴백")
-        fresh = _fetch_market_caps_per_ticker(tickers)
+        print("⚠️ screener API 실패 — 폴백은 시총만 가능 (거래량 정보 없음)")
+        fallback_mc = _fetch_market_caps_per_ticker(tickers)
+        fresh = {t: {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0}
+                 for t, mc in fallback_mc.items()}
 
     _save_cache(path, fresh)
     print(f"💾 캐시 저장: {path}")
-    # 요청 티커 중 fresh에 있는 것만 반환
     return {t: fresh[t] for t in tickers if t in fresh}
+
+
+def get_market_caps(tickers: list, force_refresh: bool = False) -> dict:
+    """
+    [하위호환] 시가총액만 반환. 내부적으로 get_screener_data() 호출 후
+    시총만 추출. 신규 코드는 get_screener_data()를 직접 사용 권장.
+
+    Returns:
+        dict: {ticker: market_cap_usd}
+    """
+    data = get_screener_data(tickers, force_refresh=force_refresh)
+    return {t: info['mc'] for t, info in data.items() if 'mc' in info}
 
 
 # ============================================================================
@@ -219,23 +237,24 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1:
-        # 지정 종목 — 종목별 fast_info 조회 (폴백 함수 직접 호출)
+        # 지정 종목 — 시총만 보충 (거래량 정보 없음, 폴백 호환용)
         tickers = [t.upper() for t in sys.argv[1:]]
-        print(f"📋 지정 종목 {len(tickers)}개 — 종목별 조회 모드")
-        fresh = _fetch_market_caps_per_ticker(tickers)
-        # 기존 캐시와 병합 저장
+        print(f"📋 지정 종목 {len(tickers)}개 — 종목별 시총만 보충")
+        mc_only = _fetch_market_caps_per_ticker(tickers)
         cache = _load_cache(config.MARKET_CAP_CACHE_PATH)
-        merged = {**cache.get('data', {}), **fresh}
+        merged = dict(cache.get('data', {}))
+        for t, mc in mc_only.items():
+            merged[t] = {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0}
         _save_cache(config.MARKET_CAP_CACHE_PATH, merged)
-        result = fresh
+        result = mc_only
+        print(f"\n📊 결과: {len(result)}개 시총 보충")
+        for t, mc in list(result.items())[:5]:
+            print(f"   {t}: ${mc/1e9:.2f}B")
     else:
-        # 전체 — screener API로 일괄 갱신
-        result = _fetch_market_caps_via_screener()
+        # 전체 — screener API로 일괄 갱신 (시총+거래량+거래대금)
+        result = _fetch_screener_data()
         _save_cache(config.MARKET_CAP_CACHE_PATH, result)
-
-    print(f"\n📊 결과 요약: {len(result)}개 시총 확보")
-    if result:
-        sample = list(result.items())[:5]
-        print("   샘플 5건:")
-        for t, mc in sample:
-            print(f"     {t}: ${mc/1e9:.2f}B")
+        print(f"\n📊 결과: {len(result)}개 종목 데이터")
+        for t, info in list(result.items())[:5]:
+            print(f"   {t}: 시총 ${info['mc']/1e9:.2f}B | "
+                  f"거래대금 ${info['turnover']/1e6:.1f}M")

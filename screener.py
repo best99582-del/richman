@@ -25,7 +25,7 @@ from ta import Make_Indicators
 from kelly import Get_Position_Size, Calculate_Reference_Kelly
 from predict import Create_Windowed_Data
 from data_loader import load_ohlcv
-from market_cap_cache import get_market_caps
+from market_cap_cache import get_screener_data
 
 logger = logging.getLogger(__name__)
 
@@ -194,23 +194,31 @@ def get_universe(force_refresh_cache: bool = False) -> list:
     df = _exclude_industries(df, config.SCREENER_EXCLUDE_INDUSTRIES)
     print(f"   업종 제외({len(config.SCREENER_EXCLUDE_INDUSTRIES)}개 키워드): {before}개 → {len(df)}개")
 
-    # 시총 조회 (캐시 우선)
+    # screener API 데이터 조회 (시총 + 거래대금, 캐시 우선)
     tickers_all = df['Symbol'].tolist()
-    caps = get_market_caps(tickers_all, force_refresh=force_refresh_cache)
-    print(f"   시총 데이터 확보: {len(caps)}/{len(tickers_all)}개")
+    data = get_screener_data(tickers_all, force_refresh=force_refresh_cache)
+    print(f"   screener 데이터 확보: {len(data)}/{len(tickers_all)}개")
 
     # 시총 범위 필터
-    in_range = [
-        t for t, mc in caps.items()
-        if config.SCREENER_MIN_MARKET_CAP <= mc <= config.SCREENER_MAX_MARKET_CAP
-    ]
+    in_mc = {
+        t: info for t, info in data.items()
+        if config.SCREENER_MIN_MARKET_CAP <= info['mc'] <= config.SCREENER_MAX_MARKET_CAP
+    }
     print(f"   시총 ${config.SCREENER_MIN_MARKET_CAP/1e9:.0f}B~${config.SCREENER_MAX_MARKET_CAP/1e9:.0f}B: "
-          f"{len(in_range)}개")
+          f"{len(in_mc)}개")
+
+    # 거래대금 사전 필터 (screener API 추정값 기반 — 정확한 20일은 filter_hot_stocks에서 재확인)
+    in_range = {
+        t: info for t, info in in_mc.items()
+        if info['turnover'] >= config.SCREENER_MIN_TURNOVER
+    }
+    print(f"   거래대금 ≥ ${config.SCREENER_MIN_TURNOVER/1e6:.0f}M (3개월 평균): "
+          f"{len(in_mc)}개 → {len(in_range)}개")
 
     # 시총 큰 순서 정렬
-    in_range.sort(key=lambda t: caps[t], reverse=True)
-    print(f"✅ 유니버스 {len(in_range)}개 추출 완료.")
-    return in_range
+    sorted_tickers = sorted(in_range.keys(), key=lambda t: in_range[t]['mc'], reverse=True)
+    print(f"✅ 유니버스 {len(sorted_tickers)}개 추출 완료.")
+    return sorted_tickers
 
 
 # ============================================================================
