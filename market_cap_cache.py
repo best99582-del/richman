@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timedelta
 
 import yfinance as yf
+from yfinance import EquityQuery
 
 import config
 
@@ -74,13 +75,13 @@ def _fetch_one(ticker: str) -> float:
         return 0.0
 
 
-def _fetch_market_caps(tickers: list) -> dict:
+def _fetch_market_caps_per_ticker(tickers: list) -> dict:
     """
-    종목 리스트의 시총을 yfinance로 일괄 조회.
-    100개마다 진행률 출력. 실패 종목은 결과에서 제외.
+    [FALLBACK] 종목별 fast_info 조회 (구버전, 약 0.6초/종목).
+    screener API 실패 시 폴백용. 200~300개 이하 부분 갱신에만 사용 권장.
     """
     total = len(tickers)
-    print(f"📡 yfinance 시총 조회 시작 ({total}개)")
+    print(f"📡 yfinance 시총 조회 시작 ({total}개, 종목별 모드)")
     start = time.time()
 
     result = {}
@@ -105,6 +106,61 @@ def _fetch_market_caps(tickers: list) -> dict:
     return result
 
 
+def _fetch_market_caps_via_screener() -> dict:
+    """
+    [기본] yfinance screener API로 NASDAQ+NYSE 시총 일괄 조회 (약 20초).
+    사전 필터: 거래소(NASDAQ, NYSE) + 가격 ≥ config.SCREENER_MIN_PRICE.
+    페이지네이션(250개/회)으로 전체 결과 수집.
+
+    Returns:
+        {ticker: market_cap_usd}. screener API 실패 시 빈 dict.
+    """
+    print(f"📡 yfinance screener API 시총 일괄 조회 시작")
+    start = time.time()
+
+    # 거래소 코드:
+    #   NMS = NASDAQ Global Select Market (대형)
+    #   NGM = NASDAQ Global Market (중형)
+    #   NCM = NASDAQ Capital Market (소형) — RKLB 같은 종목이 여기
+    #   NYQ = NYSE
+    query = EquityQuery('and', [
+        EquityQuery('is-in', ['exchange', 'NMS', 'NGM', 'NCM', 'NYQ']),
+        EquityQuery('gte', ['intradayprice', config.SCREENER_MIN_PRICE]),
+    ])
+
+    result = {}
+    page = 0
+    while True:
+        try:
+            res = yf.screen(query, size=250, offset=page * 250)
+        except Exception as e:
+            print(f"⚠️ screener 페이지 {page} 실패: {e}")
+            break
+
+        quotes = res.get('quotes', [])
+        if not quotes:
+            break
+
+        for q in quotes:
+            symbol = q.get('symbol')
+            mc = q.get('marketCap')
+            if symbol and mc:
+                result[symbol] = float(mc)
+
+        elapsed = time.time() - start
+        total_hint = res.get('total', '?')
+        print(f"  페이지 {page + 1}: {len(quotes)}개 누적 {len(result)}개 "
+              f"(전체 {total_hint}) | 경과 {elapsed:.0f}s")
+
+        page += 1
+        if len(quotes) < 250:
+            break
+
+    elapsed = time.time() - start
+    print(f"✅ 완료: {len(result)}개 시총 확보 (소요 {elapsed:.0f}s)")
+    return result
+
+
 # ============================================================================
 # [핵심] 시총 조회 — 캐시 우선
 # ============================================================================
@@ -126,26 +182,28 @@ def get_market_caps(tickers: list, force_refresh: bool = False) -> dict:
     """
     path = config.MARKET_CAP_CACHE_PATH
     cache = _load_cache(path)
-
     cached_data = cache.get('data', {})
 
     if not force_refresh and _is_fresh(cache, config.MARKET_CAP_CACHE_DAYS):
-        missing = [t for t in tickers if t not in cached_data]
-        if not missing:
-            print(f"💾 캐시 사용 ({cache.get('updated_at', '?')}, {len(cached_data)}개)")
-            return {t: cached_data[t] for t in tickers}
-        # 누락분만 조회하고 기존 캐시와 병합
-        print(f"💾 캐시 사용 + 누락 {len(missing)}개 추가 조회")
-        fresh = _fetch_market_caps(missing)
-        merged = {**cached_data, **fresh}
-        _save_cache(path, merged)
-        return {t: merged[t] for t in tickers if t in merged}
+        # 캐시가 신선하면 요청 티커 중 캐시에 있는 것만 반환
+        # 누락된 종목은 screener API의 사전 필터(가격/거래소)에 안 잡힌 종목일
+        # 가능성이 높으므로 부분 보충 없이 그대로 둠 (불필요한 API 호출 회피)
+        hits = {t: cached_data[t] for t in tickers if t in cached_data}
+        print(f"💾 캐시 사용 ({cache.get('updated_at', '?')}, "
+              f"요청 {len(tickers)} 적중 {len(hits)})")
+        return hits
 
-    # 캐시 만료 또는 force_refresh — 전체 재조회 (기존 캐시 폐기)
-    fresh = _fetch_market_caps(tickers)
+    # 캐시 만료 또는 force_refresh — screener API로 전체 재조회
+    fresh = _fetch_market_caps_via_screener()
+    if not fresh:
+        # screener 실패 — 폴백: 종목별 조회 (느림, 약 60분)
+        print("⚠️ screener API 실패 — 종목별 조회로 폴백")
+        fresh = _fetch_market_caps_per_ticker(tickers)
+
     _save_cache(path, fresh)
     print(f"💾 캐시 저장: {path}")
-    return fresh
+    # 요청 티커 중 fresh에 있는 것만 반환
+    return {t: fresh[t] for t in tickers if t in fresh}
 
 
 # ============================================================================
@@ -155,28 +213,26 @@ def get_market_caps(tickers: list, force_refresh: bool = False) -> dict:
 if __name__ == "__main__":
     """
     수동 캐시 빌드:
-      python market_cap_cache.py             # NASDAQ+NYSE 전체 빌드
-      python market_cap_cache.py IONQ PLTR   # 지정 종목만 빌드
+      python market_cap_cache.py             # screener API로 전체 갱신 (약 20초)
+      python market_cap_cache.py IONQ PLTR   # 지정 종목만 종목별 조회
     """
     import sys
 
     if len(sys.argv) > 1:
+        # 지정 종목 — 종목별 fast_info 조회 (폴백 함수 직접 호출)
         tickers = [t.upper() for t in sys.argv[1:]]
-        print(f"📋 지정 종목 {len(tickers)}개")
+        print(f"📋 지정 종목 {len(tickers)}개 — 종목별 조회 모드")
+        fresh = _fetch_market_caps_per_ticker(tickers)
+        # 기존 캐시와 병합 저장
+        cache = _load_cache(config.MARKET_CAP_CACHE_PATH)
+        merged = {**cache.get('data', {}), **fresh}
+        _save_cache(config.MARKET_CAP_CACHE_PATH, merged)
+        result = fresh
     else:
-        import contextlib
-        import FinanceDataReader as fdr
-        print("📋 NASDAQ + NYSE 전체 종목 수집 중...")
-        with contextlib.redirect_stderr(open(os.devnull, 'w')):
-            ndx = fdr.StockListing('NASDAQ')
-            nyse = fdr.StockListing('NYSE')
-        # 알파벳 심볼만 (BRK.B 같은 도트 종목 제외 — yfinance 호환성)
-        ndx = ndx[~ndx['Symbol'].str.contains(r'[^A-Z]', regex=True)]
-        nyse = nyse[~nyse['Symbol'].str.contains(r'[^A-Z]', regex=True)]
-        tickers = sorted(set(ndx['Symbol'].tolist() + nyse['Symbol'].tolist()))
-        print(f"📋 NASDAQ {len(ndx)}개 + NYSE {len(nyse)}개 → 중복 제거 {len(tickers)}개")
+        # 전체 — screener API로 일괄 갱신
+        result = _fetch_market_caps_via_screener()
+        _save_cache(config.MARKET_CAP_CACHE_PATH, result)
 
-    result = get_market_caps(tickers, force_refresh=True)
     print(f"\n📊 결과 요약: {len(result)}개 시총 확보")
     if result:
         sample = list(result.items())[:5]
