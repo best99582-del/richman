@@ -1,0 +1,11 @@
+FinanceDataReader
+numpy
+pandas
+openpyxl
+xgboost
+scikit-learn
+optuna
+matplotlib
+mplfinance
+requests
+tzdata

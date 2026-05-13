@@ -1,0 +1,73 @@
+# ============================================================================
+# .gitignore — git이 추적하지 않을 파일 목록
+# (주의: .gitignore는 줄 끝 인라인 주석을 지원하지 않습니다.
+#       주석은 반드시 줄 단독으로 작성해야 합니다.)
+# ============================================================================
+
+# --- Python 임시 파일 ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# --- 가상환경 ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE / 에디터 ---
+.vscode/
+.idea/
+.claude/
+.playwright-mcp/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- 개인 데이터 (절대 GitHub에 올리면 안 됨) ---
+# 실제 매매 기록
+trade_journal.xlsx
+# 감시 종목 / 알림 이력
+alert_watchlist.json
+alert_history.json
+# API 키, 비밀번호
+.env
+
+# --- 캐시 파일 (재생성 가능) ---
+# yfinance 시총 캐시 (주 1회 재빌드)
+market_cap_cache.json
+*.cache
+
+# --- 실험 결과 / 로그 ---
+results/
+*.log
+
+# --- 백업 파일 (이제 git이 대신 관리) ---
+*_backup.py
+backup/
+
+# --- 임시 / 작업 파일 ---
+tmp_*
+temp_*
+scratch_*
+*.tmp
+
+# --- 데이터 파일 ---
+*.csv
+*.parquet
+*.pickle
+*.pkl
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- 기타 ---
+.python-version
+docs_cache/
+
+# --- 별개 프로젝트 (richman 저장소에 미포함) ---
+korea_quant/
