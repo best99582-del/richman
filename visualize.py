@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # 🎨 [퀀트 유니버스] 전략 시각화 보드 (visualize.py)
 # ============================================================================
 # 역할: 5단 지표 패널 + 국면 배경색 + 매매 타점을 시각화하여 전략을 직관적으로 검증
@@ -22,7 +22,7 @@ import mplfinance as mpf
 import matplotlib.pyplot as plt
 
 import config
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Add_AI_Signals
 from backtest import Backtest_Strategy, Get_Trade_Decision
 

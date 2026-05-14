@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # ⚡ [퀀트 유니버스] 파라미터 최적화 엔진 (optimize.py)
 # ============================================================================
 # 역할: Optuna를 활용하여 기대수익(Expectancy Score)을 극대화하는
@@ -21,7 +21,7 @@ import numpy as np
 import optuna
 
 import config
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Add_AI_Signals
 from backtest import Backtest_Strategy
 from data_loader import load_ohlcv

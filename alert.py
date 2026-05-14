@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # 🚨 [퀀트 유니버스] 실시간 알림 시스템 (alert.py)
 # ============================================================================
 # 역할: 보유 종목 모니터링 → 익절/손절 조건 도달 시 알림 발송
@@ -120,7 +120,7 @@ def add_manual_watch(ticker: str, entry_price: float):
     take_profit = entry_price * (1 + config.TAKE_PROFIT_PCT)
 
     try:
-        from ta import Make_Indicators
+        from indicators import Make_Indicators
         from data_loader import load_ohlcv
         df = load_ohlcv(ticker.upper(), start=config.START_DATE)
         df = Make_Indicators(df)

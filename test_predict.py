@@ -1,9 +1,9 @@
-# ============================================================================
+﻿# ============================================================================
 # 🔬 test_predict.py — AI 예측 모델 검증
 # ============================================================================
 import numpy as np
 
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Analyze_Full, Add_AI_Signals, Create_Windowed_Data, _create_model, _calc_pos_weight
 import config
 from data_loader import load_ohlcv

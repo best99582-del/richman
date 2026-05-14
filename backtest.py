@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # 💹 [퀀트 유니버스] 백테스트 엔진 (backtest.py)
 # ============================================================================
 # 역할: 통합 기술 전략으로 과거 매매를 시뮬레이션하고 성과를 검증
@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Add_AI_Signals
 from kelly import Get_Position_Size
 

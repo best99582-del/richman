@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # 🔬 [퀀트 유니버스] AI 피처 비교 실험 (feature_experiment.py)
 # ============================================================================
 # 역할: 여러 피처 세트로 predict + backtest를 돌려 어떤 조합이 최적인지 비교
@@ -17,7 +17,7 @@ import pandas as pd
 
 import config
 from data_loader import load_ohlcv
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Create_Windowed_Data, _create_model, _calc_pos_weight, _laplace_precision
 from xgboost import XGBClassifier
 

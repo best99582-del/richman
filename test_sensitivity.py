@@ -1,11 +1,11 @@
-# ============================================================================
+﻿# ============================================================================
 # 🔬 test_sensitivity.py — 핵심 파라미터 민감도 분석
 # ============================================================================
 import os
 import sys
 import numpy as np
 
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from predict import Add_AI_Signals, Create_Windowed_Data
 from backtest import Backtest_Strategy
 import config

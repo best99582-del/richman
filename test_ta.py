@@ -1,10 +1,10 @@
-# ============================================================================
+﻿# ============================================================================
 # 🔬 test_ta.py — 기술적 지표 정확도 검증 (v8.1)
 # ============================================================================
 import numpy as np
 import pandas as pd
 import config
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from data_loader import load_ohlcv
 
 def _load(ticker, start):

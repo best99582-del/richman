@@ -1,15 +1,25 @@
 # ============================================================================
-# 📊 [퀀트 유니버스] 기술적 지표 엔진 (ta.py)
+# 📊 [퀀트 유니버스] 기술적 지표 엔진 (indicators.py)
 # ============================================================================
 # 역할: 원시 OHLCV 데이터를 분석용 지표로 가공 + GMM 시장 국면 판별
 # 파이프라인 위치: [3단계] 데이터 전처리
-# 의존성: config.py
+# 의존성: config.py, ta (외부 라이브러리 — RSI/MACD/BB/ATR/ADX)
+#
+# 변경 이력:
+#   v10: ta 라이브러리로 5개 표준 지표 교체 (검증 결과 corr ≥ 0.9993)
+#        - RSI, MACD, Bollinger Bands, ATR, ADX
+#        - Stochastic은 정의 차이로 우리 구현 유지
+#        - 파생 신호(Divergence, BB_Squeeze 등)는 자체 구현 유지
 # ============================================================================
 
 import warnings
 
 import numpy as np
 import pandas as pd
+import ta as ta_lib
+import ta.momentum
+import ta.trend
+import ta.volatility
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.exceptions import ConvergenceWarning
@@ -18,34 +28,9 @@ import config
 
 
 # ============================================================================
-# [유틸리티] Wilder's RMA (지수평활이동평균)
+# [참고] get_rma() 함수는 v10에서 제거됨 — ta 라이브러리 사용으로 불필요해짐
+# 필요 시 ta_backup.py에서 복원 가능 (Wilder's RMA 직접 구현체)
 # ============================================================================
-
-def get_rma(series: pd.Series, period: int) -> pd.Series:
-    """
-    Welles Wilder's RMA — RSI, ATR, ADX의 기반 평활 함수.
-
-    일반 EMA(alpha=2/(n+1))와 달리 alpha=1/period 사용 → 더 부드러운 곡선.
-    공식: RMA[i] = (RMA[i-1] × (period-1) + value[i]) / period
-    초기값: 첫 period개의 단순평균(SMA)
-    """
-    vals = series.values
-    rma = np.full(len(vals), np.nan)
-
-    valid_idx = np.where(~np.isnan(vals))[0]
-    if len(valid_idx) < period:
-        return pd.Series(rma, index=series.index)
-
-    start_pos = valid_idx[period - 1]
-    rma[start_pos] = np.nanmean(vals[valid_idx[0]: start_pos + 1])
-
-    for i in range(start_pos + 1, len(vals)):
-        if np.isnan(vals[i]):
-            rma[i] = rma[i - 1]
-        else:
-            rma[i] = (rma[i - 1] * (period - 1) + vals[i]) / period
-
-    return pd.Series(rma, index=series.index)
 
 
 # ============================================================================
@@ -93,22 +78,21 @@ def Make_Indicators(df: pd.DataFrame, params: dict = None) -> pd.DataFrame:
     df = df.copy()
     p = _load_params(params)
 
-    # ===== [1] MACD =====
-    exp_short = df['Close'].ewm(span=p['macd_short'], adjust=False).mean()
-    exp_long  = df['Close'].ewm(span=p['macd_long'],  adjust=False).mean()
-    df['MACD']        = exp_short - exp_long
-    df['MACD_Signal'] = df['MACD'].ewm(span=p['macd_signal'], adjust=False).mean()
-    df['MACD_Hist']   = df['MACD'] - df['MACD_Signal']
+    # ===== [1] MACD (ta 라이브러리) =====
+    macd_obj = ta_lib.trend.MACD(
+        close=df['Close'],
+        window_slow=p['macd_long'],
+        window_fast=p['macd_short'],
+        window_sign=p['macd_signal'],
+    )
+    df['MACD']        = macd_obj.macd()
+    df['MACD_Signal'] = macd_obj.macd_signal()
+    df['MACD_Hist']   = macd_obj.macd_diff()
 
-    # ===== [2] RSI — Wilder's RMA 방식 (HTS 완벽 일치) =====
-    # 상승/하락 분리 → RMA 평활 → RS → RSI
-    delta = df['Close'].diff(1)
-    au = get_rma(pd.Series(np.where(delta > 0, delta, 0), index=df.index), p['rsi_period'])
-    ad = get_rma(pd.Series(np.where(delta < 0, -delta, 0), index=df.index), p['rsi_period'])
-
-    rs = au / np.where(ad == 0, np.nan, ad)
-    df['RSI'] = 100 - (100 / (1 + rs))
-    df.loc[ad == 0, 'RSI'] = 100  # 하락이 전혀 없으면 RSI = 100
+    # ===== [2] RSI (ta 라이브러리, Wilder's RMA 방식) =====
+    df['RSI'] = ta_lib.momentum.RSIIndicator(
+        close=df['Close'], window=p['rsi_period']
+    ).rsi()
 
     # ===== [3] 이동평균 + 볼린저밴드 =====
     df['MA5']   = df['Close'].rolling(5).mean()
@@ -117,21 +101,19 @@ def Make_Indicators(df: pd.DataFrame, params: dict = None) -> pd.DataFrame:
     df['MA60']  = df['Close'].rolling(60).mean()
     df['MA120'] = df['Close'].rolling(120).mean()
 
-    std          = df['Close'].rolling(config.BB_PERIOD).std()
-    df['Upper']  = df['MA20'] + std * config.BB_STD
-    df['Lower']  = df['MA20'] - std * config.BB_STD
-    # MA20 대비 비율(%)로 표준화 → 종목 간 비교 가능
+    bb_obj = ta_lib.volatility.BollingerBands(
+        close=df['Close'], window=config.BB_PERIOD, window_dev=config.BB_STD
+    )
+    df['Upper'] = bb_obj.bollinger_hband()
+    df['Lower'] = bb_obj.bollinger_lband()
+    # MA20 대비 비율(%)로 표준화 — 종목 간 비교 가능 (ta 라이브러리 기본은 절대값)
     df['BandWidth'] = (df['Upper'] - df['Lower']) / df['MA20'] * 100
 
-    # ===== [4] ATR — Wilder's RMA (True Range의 평활) =====
-    true_range = np.maximum(
-        df['High'] - df['Low'],
-        np.maximum(
-            np.abs(df['High'] - df['Close'].shift()),
-            np.abs(df['Low']  - df['Close'].shift()),
-        )
-    )
-    df['ATR'] = get_rma(pd.Series(true_range, index=df.index), config.ATR_PERIOD)
+    # ===== [4] ATR (ta 라이브러리, Wilder's RMA on True Range) =====
+    df['ATR'] = ta_lib.volatility.AverageTrueRange(
+        high=df['High'], low=df['Low'], close=df['Close'],
+        window=config.ATR_PERIOD,
+    ).average_true_range()
 
     # ===== [5] 이격도 (Disparity) — EMA20 대비 현재가 위치 =====
     # 100 기준: 이상이면 EMA 위, 이하면 EMA 아래
@@ -145,27 +127,11 @@ def Make_Indicators(df: pd.DataFrame, params: dict = None) -> pd.DataFrame:
     df['Slow_K'] = df['K'].rolling(p['stoch_slow_k']).mean()
     df['Slow_D'] = df['Slow_K'].rolling(p['stoch_slow_d']).mean()
 
-    # ===== [7] ADX — Wilder's RMA (+DM/-DM → +DI/-DI → DX → ADX) =====
-    plus_dm  = df['High'].diff()
-    minus_dm = -df['Low'].diff()
-
-    plus_dm_s  = get_rma(
-        pd.Series(np.where((plus_dm > minus_dm)  & (plus_dm  > 0), plus_dm,  0), index=df.index),
-        config.ATR_PERIOD
-    )
-    minus_dm_s = get_rma(
-        pd.Series(np.where((minus_dm > plus_dm)  & (minus_dm > 0), minus_dm, 0), index=df.index),
-        config.ATR_PERIOD
-    )
-
-    atr_safe  = np.where(df['ATR'] == 0, 1e-9, df['ATR'])
-    plus_di   = 100 * (plus_dm_s  / atr_safe)
-    minus_di  = 100 * (minus_dm_s / atr_safe)
-    di_sum    = np.where(plus_di + minus_di == 0, 1e-9, plus_di + minus_di)
-    df['ADX'] = get_rma(
-        pd.Series(100 * np.abs(plus_di - minus_di) / di_sum, index=df.index),
-        config.ATR_PERIOD
-    )
+    # ===== [7] ADX (ta 라이브러리) =====
+    df['ADX'] = ta_lib.trend.ADXIndicator(
+        high=df['High'], low=df['Low'], close=df['Close'],
+        window=config.ATR_PERIOD,
+    ).adx()
 
     # ===== [파생 8~17] =====
 

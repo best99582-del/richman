@@ -21,7 +21,7 @@ import FinanceDataReader as fdr
 from xgboost import XGBClassifier
 
 import config
-from ta import Make_Indicators
+from indicators import Make_Indicators
 from kelly import Get_Position_Size, Calculate_Reference_Kelly
 from predict import Create_Windowed_Data
 from data_loader import load_ohlcv
