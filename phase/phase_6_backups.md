@@ -72,6 +72,31 @@ CLAUDE.md 환경 정보에 따르면 **이 프로젝트는 git 저장소가 아�
 
 - [x] phase_6_backups.md 계획 작성
 - [x] backup/predict_book.py 정체 파악 완료 (predict.py 초기 프로토타입)
-- [ ] 백업 인덱스 작성
-- [ ] (phase 5 후) archive/ 폴더로 이동
-- [ ] (장기) git init 검토
+- [x] git init + GitHub 연동 완료 (별도 작업)
+- [x] 백업 파일 archive 이동 완료 (2026-05-14)
+- [x] `.gitignore`에 `_archive/` 추가
+
+## 실행 결과 (2026-05-14)
+
+### 이동된 파일
+
+`_archive/backups_v10/`:
+- config_backup.py (May 12)
+- kelly_backup.py (May 12)
+- predict_backup.py (May 12)
+- screener_backup.py (May 13)
+- ta_backup.py (May 14, ta→indicators 리네임 직전)
+- market_cap_cache_backup.py (May 13)
+
+`_archive/old_backup_folder/`:
+- predict_book.py (구 backup/ 폴더 — predict.py 초기 프로토타입)
+
+### 보존 정책
+
+- 디스크에 그대로 남음 → 필요시 복원 가능
+- git 추적 안 함 (`.gitignore`의 `_archive/`)
+- 모든 변경 이력은 이미 git에 보존됨 (필요시 `git show HASH:파일명`으로 복원 가능)
+
+### 장기 정리 (선택)
+
+3~6개월 운영 후 회귀 문제 없으면 `_archive/` 전체 삭제 검토.
