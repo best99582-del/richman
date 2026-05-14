@@ -43,6 +43,7 @@ screener의 시총 필터가 실제로 작동하지 않는 문제 해결 + 중�
 | 후속 3 | Optuna 재최적화 (Volume_Spike+Slow_K/D 반영) | ✅ 완료 (2026-05-14, 합계 +777%p) | [phase_optuna_rerun.md](phase_optuna_rerun.md) |
 | 후속 4 | 정밀도 평가 메트릭 일원화 (screener↔predict) | ✅ 완료 (2026-05-14) | [phase_metric_unify.md](phase_metric_unify.md) |
 | 후속 5 | AI_FORECAST_PERIOD × AI_TARGET_PCT 그리드 캘리브레이션 | ✅ 완료 (2026-05-14, 추천 10일/7%) | [phase_signal_grid.md](phase_signal_grid.md) |
+| 후속 6 | AI_FILTER 재캘리브레이션 + Add_AI_Signals 버그 수정 + test_sensitivity 보완 | ✅ 완료 (2026-05-14, FP/TP/AI_FILTER 일괄 v10.2 반영) | [phase_filter_calib.md](phase_filter_calib.md) |
 
 ## 작업 원칙
 

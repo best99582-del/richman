@@ -63,11 +63,11 @@ richman/
 | `RSI_BUY` / `RSI_SELL` | 42 / 84 | RSI 매수/매도 기준 (v10.1 Optuna) |
 | `BB_SQUEEZE_RATIO` | 1.68 | 스퀴즈 탈출 판단 배율 (v10.1 Optuna) |
 | `ADX_THRESHOLD` | 0 (비활성) | ADX 횡보 보조 기준 (v8.1에서 제거됨) |
-| `AI_FILTER` | 0.50 | AI 확신도 매수 필터 (v10.1 Optuna) |
+| `AI_FILTER` | 0.55 | AI 확신도 매수 필터 (v10.2 헌법 회복) |
 | `TRAILING_ATR_MULT` | 3.17 | Chandelier Exit ATR 배수 (v10.1 Optuna) |
+| `AI_FORECAST_PERIOD` | 10일 | XGBoost 예측 기간 (v10.2 그리드 재캘리브레이션) |
+| `AI_TARGET_PCT` | 7% | 급등 판단 기준 수익률 (v10.2 그리드 재캘리브레이션) |
 | `TRAILING_STOP_PCT` | 5.5% | 퍼센트 기반 손절 대안 |
-| `AI_FORECAST_PERIOD` | 10일 | XGBoost 예측 기간 |
-| `AI_TARGET_PCT` | 15% | 급등 판단 기준 수익률 |
 | `KELLY_FRACTION` | 0.5 | Half-Kelly 비율 |
 | `FEE_RATE` | 0.4% | 편도 수수료 |
 | `SATELLITE_ALLOCATION` | 30% | 스윙 자금 비율 |

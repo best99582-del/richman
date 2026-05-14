@@ -402,17 +402,28 @@ def _print_deep_dashboard(picks: list, elapsed: float):
 # Walk-Forward AI 신호 부착 (backtest.py 연동)
 # ============================================================================
 
-def Add_AI_Signals(df, train_window=500):
-    """backtest.py용 Walk-Forward AI_Prob 부착"""
+def Add_AI_Signals(df, train_window=500, target_pct=None, forecast_period=None, ai_filter=None):
+    """backtest.py용 Walk-Forward AI_Prob 부착.
+
+    학습 전 구간(첫 train_window일)은 AI_Prob=0.0으로 둠 — 어떤 AI_FILTER에서도
+    매수 통과되지 않도록. (과거에 0.5 디폴트였을 때 AI_FILTER=0.50과 정확히
+    같은 경계라 학습 안 된 노이즈 구간이 매수 후보로 들어갔던 버그 수정.)
+
+    Args:
+        target_pct, forecast_period, ai_filter: None이면 모듈 상수(config) 사용.
+            test_sensitivity 등 sweep 도구가 인자로 오버라이드 가능.
+    """
+    tp = target_pct if target_pct is not None else TARGET_PCT
+    fp = forecast_period if forecast_period is not None else FORECAST_PERIOD
+    af = ai_filter if ai_filter is not None else AI_FILTER
+
     df = df.copy()
-    df['AI_Prob'] = 0.5
-    df['Model_Precision'] = 0.5
+    df['AI_Prob'] = 0.0
+    df['Model_Precision'] = 0.0
 
-    X_all, y_all = Create_Windowed_Data(
-        df, FEATURES, WINDOW_SIZE, TARGET_PCT, FORECAST_PERIOD
-    )
+    X_all, y_all = Create_Windowed_Data(df, FEATURES, WINDOW_SIZE, tp, fp)
 
-    if len(X_all) < train_window + FORECAST_PERIOD:
+    if len(X_all) < train_window + fp:
         return df
 
     update_step = 20
@@ -421,7 +432,7 @@ def Add_AI_Signals(df, train_window=500):
     holdout_size = max(20, train_window // 5)  # 학습 데이터의 20%를 정밀도 측정용
 
     for i in range(train_window, len(X_all), update_step):
-        train_end = i - FORECAST_PERIOD
+        train_end = i - fp
         if train_end <= holdout_size:
             continue
 
@@ -440,7 +451,7 @@ def Add_AI_Signals(df, train_window=500):
 
         # 학습에 안 쓴 holdout으로 정밀도 측정 → backtest의 Kelly에 더 정직한 값 전달
         holdout_probs = model.predict_proba(X_holdout)[:, 1]
-        holdout_preds = (holdout_probs >= AI_FILTER).astype(int)
+        holdout_preds = (holdout_probs >= af).astype(int)
         precision = _laplace_precision(holdout_preds, y_holdout)
 
         pred_end = min(i + update_step, len(X_all))

@@ -6,7 +6,7 @@ import sys
 import numpy as np
 
 from indicators import Make_Indicators
-from predict import Add_AI_Signals, Create_Windowed_Data
+from predict import Add_AI_Signals, Create_Windowed_Data, cv_precision
 from backtest import Backtest_Strategy
 import config
 from data_loader import load_ohlcv
@@ -20,7 +20,7 @@ OUTPUT_FILE = 'results/sensitivity_results.txt'
 # ============================================================================
 
 def _prepare_all() -> dict:
-    """전 종목 지표+AI 신호 산출 — 최초 1회만 실행"""
+    """전 종목 지표+AI 신호 산출 — 최초 1회만 실행 (현 config의 AI_FILTER/FP/TP 기준)"""
     print("⏳ 데이터 전처리 중 (1회)...")
     stock_data = {}
     for ticker in TEST_TICKERS:
@@ -29,6 +29,21 @@ def _prepare_all() -> dict:
             df = Make_Indicators(df)
             df = Add_AI_Signals(df)
             df = df.dropna()
+            stock_data[ticker] = df
+            print(f"  ✅ {ticker}: {len(df)}일")
+        except Exception as e:
+            print(f"  ⚠️ {ticker} 실패: {e}")
+    return stock_data
+
+
+def _prepare_indicators_only() -> dict:
+    """지표만 산출한 데이터 — FP/TP sweep용 (Add_AI_Signals를 sweep마다 다시 호출)"""
+    print("⏳ 지표 산출 중 (FP/TP sweep용)...")
+    stock_data = {}
+    for ticker in TEST_TICKERS:
+        try:
+            df = load_ohlcv(ticker, start=config.START_DATE, drop_intraday=True)
+            df = Make_Indicators(df).dropna()
             stock_data[ticker] = df
             print(f"  ✅ {ticker}: {len(df)}일")
         except Exception as e:
@@ -244,6 +259,103 @@ def test_trailing_stop(stock_data: dict):
 
 
 # ============================================================================
+# [검증 6] AI_FORECAST_PERIOD — 보유기간 (분류 정밀도 + 매매 성과)
+# ============================================================================
+
+def _fp_tp_sweep(indicators_dict: dict, kind: str, values: list) -> list:
+    """FP 또는 TP를 sweep — 각 값마다 Add_AI_Signals 재호출 + 매매 시뮬.
+
+    Args:
+        indicators_dict: {ticker: indicators-only df}
+        kind: 'fp' 또는 'tp'
+        values: sweep 값 리스트
+    """
+    rows = []
+    for val in values:
+        # 각 종목에 새 라벨 정의로 Walk-Forward AI 신호 부착
+        cv_precs, total_trades, total_wins = [], 0, 0
+        all_returns, all_losses = [], []
+        for ticker, df_ind in indicators_dict.items():
+            if kind == 'fp':
+                kwargs_signal = {'forecast_period': val}
+                kwargs_cv = {'forecast_period': val}
+            else:  # tp
+                kwargs_signal = {'target_pct': val}
+                kwargs_cv = {'target_pct': val}
+
+            # 분류 정밀도 (5-Fold CV) — 신호 자체 품질
+            prec, _ = cv_precision(df_ind, **kwargs_cv)
+            cv_precs.append(prec)
+
+            # 매매 시뮬 (Walk-Forward 신호 부착 후 backtest)
+            df_sig = Add_AI_Signals(df_ind.copy(), **kwargs_signal).dropna()
+            result = Backtest_Strategy(ticker=ticker, df_input=df_sig)
+            tc = result['trade_count']
+            total_trades += tc
+            if tc > 0:
+                total_wins += result['win_rate'] * tc
+                all_returns.append(result['avg_return'])
+                all_losses.append(result['trade_log']['Return'].min())
+
+        rows.append({
+            'value': val,
+            'cv_precision': float(np.mean(cv_precs)) if cv_precs else 0.0,
+            'trades': total_trades,
+            'win_rate': total_wins / total_trades if total_trades > 0 else 0.0,
+            'avg_ret': float(np.mean(all_returns)) if all_returns else 0.0,
+            'max_loss': float(min(all_losses)) if all_losses else 0.0,
+        })
+    return rows
+
+
+def _print_fp_tp_sweep(rows: list, param_name: str, current_val, col_label: str):
+    print(f"\n  {col_label:>8} | {'CV정밀도':>8} | {'매매수':>6} | {'승률':>7} | {'평균수익':>8} | {'최대손실':>8} | 판정")
+    print(f"  {'─'*78}")
+    for r in rows:
+        marker = " ◀현재" if abs(r['value'] - current_val) < 1e-4 else ""
+        # 판정: 매매수 부족 / CV 정밀도 / 승률·평균 종합
+        if r['trades'] < 10:
+            verdict = "⚠️ 기회 부족"
+        elif r['win_rate'] > 0.50 and r['avg_ret'] > 0 and r['cv_precision'] >= 0.50:
+            verdict = "✅ 양호"
+        elif r['win_rate'] > 0.45:
+            verdict = "⚠️ 보통"
+        else:
+            verdict = "❌ 부진"
+        print(
+            f"  {r['value']:>8.3g} | {r['cv_precision']:>7.3f} | "
+            f"{r['trades']:>6} | {r['win_rate']:>6.1%} | "
+            f"{r['avg_ret']:>+7.2%} | {r['max_loss']:>+7.2%} | {verdict}{marker}"
+        )
+    print(f"\n  현재: {param_name} = {current_val}")
+
+
+def test_forecast_period(indicators_dict: dict):
+    """AI_FORECAST_PERIOD 별 분류 정밀도 + 매매 성과.
+
+    값마다 Add_AI_Signals를 다시 호출 (신호 정의 자체가 바뀌므로).
+    """
+    print("\n" + "="*84)
+    print("🔬 [검증 6] AI_FORECAST_PERIOD — 보유기간 (분류 정밀도 + 매매 성과)")
+    print("="*84)
+    fps = [3, 5, 7, 10, 14]
+    rows = _fp_tp_sweep(indicators_dict, 'fp', fps)
+    _print_fp_tp_sweep(rows, 'AI_FORECAST_PERIOD', config.AI_FORECAST_PERIOD, 'FP(일)')
+    print(f"  ℹ️ 짧을수록 신호 빈도↑ 정밀도↓ — 단기 스윙은 7~10일이 합리적")
+
+
+def test_target_pct(indicators_dict: dict):
+    """AI_TARGET_PCT 별 분류 정밀도 + 매매 성과."""
+    print("\n" + "="*84)
+    print("🔬 [검증 7] AI_TARGET_PCT — 목표수익률 (분류 정밀도 + 매매 성과)")
+    print("="*84)
+    tps = [5, 7, 10, 15, 20]
+    rows = _fp_tp_sweep(indicators_dict, 'tp', tps)
+    _print_fp_tp_sweep(rows, 'AI_TARGET_PCT', config.AI_TARGET_PCT, 'TP(%)')
+    print(f"  ℹ️ 낮을수록 양성비↑ 정밀도↑ — 단 너무 낮으면 변별력 상실 (양성비 55%+ 경계)")
+
+
+# ============================================================================
 # [실행]
 # ============================================================================
 
@@ -272,11 +384,16 @@ if __name__ == "__main__":
 
     stock_data = _prepare_all()
 
-    test_target_calibration(stock_data)   # [1] 모델 설정 진단
+    test_target_calibration(stock_data)   # [1] 모델 설정 진단 (양성비)
     test_bb_squeeze(stock_data)           # [2] BB 스퀴즈 발동 빈도 + 성과
     test_ai_filter(stock_data)            # [3] AI 필터 임계값
-    test_rsi_thresholds(stock_data)       # [4] RSI 매수/매도 기준 (신규)
+    test_rsi_thresholds(stock_data)       # [4] RSI 매수/매도 기준
     test_trailing_stop(stock_data)        # [5] 트레일링 스탑 배수
+
+    # [6, 7] FP/TP — 각 값마다 Add_AI_Signals 재호출 필요 → indicators-only 데이터
+    indicators_dict = _prepare_indicators_only()
+    test_forecast_period(indicators_dict) # [6] 보유기간 (신규)
+    test_target_pct(indicators_dict)      # [7] 목표수익률 (신규, 양성비뿐 아니라 매매까지)
 
     sys.stdout = sys.__stdout__
     log_f.close()
