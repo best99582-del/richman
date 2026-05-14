@@ -1,0 +1,24 @@
+[20:36:04] TEST_TICKERS = ['IONQ', 'PLTR', 'SOFI', 'APLD', 'RKLB']
+[20:36:04] AI_FEATURES = ['RSI', 'Disparity', 'BandWidth', 'Volume_Spike', 'Slow_K', 'Slow_D']
+[20:36:04] [preprocess] IONQ ...
+[20:36:09] [preprocess] IONQ done — rows=1227
+[20:36:09] [preprocess] PLTR ...
+[20:36:13] [preprocess] PLTR done — rows=1292
+[20:36:13] [preprocess] SOFI ...
+[20:36:17] [preprocess] SOFI done — rows=1227
+[20:36:17] [preprocess] APLD ...
+[20:36:20] [preprocess] APLD done — rows=905
+[20:36:20] [preprocess] RKLB ...
+[20:36:24] [preprocess] RKLB done — rows=1253
+[20:36:24] ============================================================
+[20:36:24] Layer 2 시작 (500 trials)
+[20:36:24] ============================================================
+[20:42:17] Layer 2 완료 — 353.2s, best=48.5028
+[20:42:17] Layer 2 best_params = {'rsi_buy': 42, 'rsi_sell': 84, 'bb_squeeze_ratio': 1.6769821748093836, 'ai_filter': 0.503685973049218, 'trailing_atr_mult': 3.1676333212914605}
+[20:42:17] ============================================================
+[20:42:17] Layer 1 시작 (250 trials)
+[20:42:17] ============================================================
+[21:13:21] Layer 1 완료 — 1864.2s, best=32.4013
+[21:13:21] Layer 1 best_params = {'rsi_period': 7, 'macd_version': 1, 'stoch_period': 14, 'stoch_slow_k': 5, 'stoch_slow_d': 5, 'rsi_buy': 48, 'rsi_sell': 85, 'bb_squeeze_ratio': 1.650736593696163, 'ai_filter': 0.5048837789008097, 'trailing_atr_mult': 4.814486407590204}
+[21:13:21] 결과 저장: C:\Users\admin\Desktop\richman\phase\optuna_rerun_result.json
+[21:13:21] DONE

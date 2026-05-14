@@ -34,6 +34,14 @@ screener의 시총 필터가 실제로 작동하지 않는 문제 해결 + 중�
 | **5** | 통합 검증 (통과 종목 분포 / TICKERS 호환 / 회귀 점검) | ✅ **완료** (V1~V6 모두 통과, 2026-05-14) | [phase_5.md](phase_5.md) |
 | 6 (보조) | 백업 파일 정리 — `_archive/`로 이동, .gitignore 등록 | ✅ **완료** (2026-05-14, 7개 파일 + 폴더 1개 이동) | [phase_6_backups.md](phase_6_backups.md) |
 
+## 후속 작업 (Screener 개편 이후)
+
+| 단계 | 내용 | 상태 | 기록 |
+|---|---|---|---|
+| 후속 1 | ta 라이브러리 부분 교체 (RSI/MACD/BB/ATR/ADX) | ✅ 완료 | (커밋 d7bf392) |
+| 후속 2 | Volume_Ratio → Volume_Spike 교체 | ✅ 완료 (2026-05-14) | [phase_vr_spike.md](phase_vr_spike.md) |
+| 후속 3 | Optuna 재최적화 (Volume_Spike+Slow_K/D 반영) | ✅ 완료 (2026-05-14, 합계 +777%p) | [phase_optuna_rerun.md](phase_optuna_rerun.md) |
+
 ## 작업 원칙
 
 - 각 단계 시작 전 백업 생성 (`파일명_backup.py`)

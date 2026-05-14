@@ -1,0 +1,46 @@
+{
+  "test_tickers": [
+    "IONQ",
+    "PLTR",
+    "SOFI",
+    "APLD",
+    "RKLB"
+  ],
+  "ai_features": [
+    "RSI",
+    "Disparity",
+    "BandWidth",
+    "Volume_Spike",
+    "Slow_K",
+    "Slow_D"
+  ],
+  "layer2": {
+    "n_trials": 500,
+    "best_value": 48.502781227302684,
+    "best_params": {
+      "rsi_buy": 42,
+      "rsi_sell": 84,
+      "bb_squeeze_ratio": 1.6769821748093836,
+      "ai_filter": 0.503685973049218,
+      "trailing_atr_mult": 3.1676333212914605
+    },
+    "elapsed_seconds": 353.23186564445496
+  },
+  "layer1": {
+    "n_trials": 250,
+    "best_value": 32.40129938376175,
+    "best_params": {
+      "rsi_period": 7,
+      "macd_version": 1,
+      "stoch_period": 14,
+      "stoch_slow_k": 5,
+      "stoch_slow_d": 5,
+      "rsi_buy": 48,
+      "rsi_sell": 85,
+      "bb_squeeze_ratio": 1.650736593696163,
+      "ai_filter": 0.5048837789008097,
+      "trailing_atr_mult": 4.814486407590204
+    },
+    "elapsed_seconds": 1864.1850109100342
+  }
+}

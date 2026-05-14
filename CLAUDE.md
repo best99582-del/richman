@@ -60,10 +60,11 @@ richman/
 
 | 파라미터 | 현재 값 | 설명 |
 |---|---|---|
-| `BB_SQUEEZE_RATIO` | 1.8 | 스퀴즈 탈출 판단 배율 |
+| `RSI_BUY` / `RSI_SELL` | 42 / 84 | RSI 매수/매도 기준 (v10.1 Optuna) |
+| `BB_SQUEEZE_RATIO` | 1.68 | 스퀴즈 탈출 판단 배율 (v10.1 Optuna) |
 | `ADX_THRESHOLD` | 0 (비활성) | ADX 횡보 보조 기준 (v8.1에서 제거됨) |
-| `AI_FILTER` | 0.52 | AI 확신도 매수 필터 (= PRECISION_THRESHOLD) |
-| `TRAILING_ATR_MULT` | 4.5 | Chandelier Exit ATR 배수 |
+| `AI_FILTER` | 0.50 | AI 확신도 매수 필터 (v10.1 Optuna) |
+| `TRAILING_ATR_MULT` | 3.17 | Chandelier Exit ATR 배수 (v10.1 Optuna) |
 | `TRAILING_STOP_PCT` | 5.5% | 퍼센트 기반 손절 대안 |
 | `AI_FORECAST_PERIOD` | 10일 | XGBoost 예측 기간 |
 | `AI_TARGET_PCT` | 15% | 급등 판단 기준 수익률 |

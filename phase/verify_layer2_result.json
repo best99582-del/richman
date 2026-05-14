@@ -1,0 +1,82 @@
+{
+  "IONQ": {
+    "current": {
+      "trades": 3,
+      "win_rate": 100.0,
+      "avg_return": 107.15199469383441,
+      "sharpe": 1.962380183561649,
+      "cumulative": 591.6661185754494
+    },
+    "layer2": {
+      "trades": 21,
+      "win_rate": 61.904761904761905,
+      "avg_return": 13.813103941674637,
+      "sharpe": 1.4394237294020584,
+      "cumulative": 398.39995092856054
+    }
+  },
+  "PLTR": {
+    "current": {
+      "trades": 3,
+      "win_rate": 66.66666666666666,
+      "avg_return": 7.911228717012264,
+      "sharpe": 0.6650609297390702,
+      "cumulative": 21.02705037688546
+    },
+    "layer2": {
+      "trades": 15,
+      "win_rate": 60.0,
+      "avg_return": 23.23379442858177,
+      "sharpe": 1.581239367372706,
+      "cumulative": 690.7799264789201
+    }
+  },
+  "SOFI": {
+    "current": {
+      "trades": 9,
+      "win_rate": 66.66666666666666,
+      "avg_return": 27.147378698035833,
+      "sharpe": 1.4209573103531243,
+      "cumulative": 385.94761069366444
+    },
+    "layer2": {
+      "trades": 15,
+      "win_rate": 46.666666666666664,
+      "avg_return": 17.89596256859138,
+      "sharpe": 1.4025790536145,
+      "cumulative": 378.48495751103394
+    }
+  },
+  "APLD": {
+    "current": {
+      "trades": 2,
+      "win_rate": 100.0,
+      "avg_return": 164.7087823282653,
+      "sharpe": 1.5905559761102686,
+      "cumulative": 493.4726311088875
+    },
+    "layer2": {
+      "trades": 10,
+      "win_rate": 40.0,
+      "avg_return": 24.29096902822175,
+      "sharpe": 1.4489338028456067,
+      "cumulative": 329.6601773782069
+    }
+  },
+  "RKLB": {
+    "current": {
+      "trades": 5,
+      "win_rate": 60.0,
+      "avg_return": 102.43666036153722,
+      "sharpe": 1.3263743054580408,
+      "cumulative": 805.6976040841616
+    },
+    "layer2": {
+      "trades": 10,
+      "win_rate": 70.0,
+      "avg_return": 38.971478215419346,
+      "sharpe": 2.1797601659574948,
+      "cumulative": 1278.2498784611664
+    }
+  }
+}
