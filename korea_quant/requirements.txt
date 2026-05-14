@@ -1,0 +1,8 @@
+pykrx
+OpenDartReader
+vectorbt
+quantstats
+ta
+pandas
+numpy
+matplotlib
