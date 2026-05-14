@@ -69,5 +69,12 @@ scratch_*
 .python-version
 docs_cache/
 
-# --- 별개 프로젝트 (richman 저장소에 미포함) ---
-korea_quant/
+# --- korea_quant 하위 무시 항목 ---
+# 데이터 캐시 (수십 MB 이상, 재현 가능)
+korea_quant/data/cache/
+# 백테스트/스크리닝 결과물 (.gitignore에 패턴 없으면 누적)
+korea_quant/reports/*.csv
+# 백테스트 실행 로그 (휘발성)
+korea_quant/*.log
+# Python 임시
+korea_quant/**/__pycache__/
