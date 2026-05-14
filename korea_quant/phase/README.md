@@ -14,6 +14,7 @@
 | 2 | 진입 조건식 + 논리식 | ENTRY_CONDITIONS, ENTRY_LOGIC (AND/OR/괄호 조합) | [phase_02_entry_conditions.md](phase_02_entry_conditions.md) |
 | 3 | Universe 필터 확장 + ATR 비중 | INCLUDE_SECTORS, WHITELIST/BLACKLIST, ATR 비중 | [phase_03_universe_atr.md](phase_03_universe_atr.md) |
 | 4 | 16개 팩터 확장 + TTM 도입 | 팩터 16종 완성, DART finstate_all, CIS 처리 | [phase_04_factors_ttm.md](phase_04_factors_ttm.md) |
+| 5 | 백테스트 엔진 (시점별 동적 리밸런싱) | vectorbt 기반 백테스트 인프라 검증 완료. 2021-01~2023-09 CAGR -10.5%, 알파 -5.2%p (튜닝 필요) | [phase_05_backtest.md](phase_05_backtest.md) |
 
 ---
 
@@ -29,12 +30,16 @@
 
 | Phase | 제목 | 우선순위 |
 |---|---|---|
-| 5 | 백테스트 엔진 구축 (vectorbt) | 최우선 |
 | 6 | 매도 조건 (목표가/손절가/트레일링/조건매도) | 높음 |
 | 7 | 팩터 함수 시스템 (이동평균/순위/변화율) | 중간 |
 | 8 | Universe 필터 보강 (관리/감리 실제 필터, 규모별 선택) | 중간 |
 | 9 | 최적화 (Optuna) + HTML 리포트 (quantstats) | 낮음 |
 | 10 | 추가 팩터 (수급/모멘텀/마켓타이밍) | 낮음 |
+
+### Phase 5 미해결 후속
+
+- 2023Q3, 2023연간, 2024Q2, 2024Q3 분기 보고서 추가 수집 (DART API 응답 정상화 시점에)
+- 2021-01-01 ~ 2024-12-31 전체 기간 백테스트 재실행
 
 ---
 

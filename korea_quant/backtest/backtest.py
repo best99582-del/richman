@@ -40,11 +40,78 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from configs import config
-from data.data_loader import get_price_matrix, get_price
+from data.data_loader import get_price_matrix, get_price, get_financial_batch
 from universe.universe import get_universe
 from scoring.scorer import score_universe, select_portfolio
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# [내부] 사전 수집 — 리밸런싱 날짜들이 필요로 하는 DART 분기 조합 일괄 수집
+# ============================================================================
+
+def _resolve_fin_quarter(as_of_date: str) -> tuple:
+    """
+    as_of_date → (fin_year, fin_quarter).
+    universe._add_financials() 의 분기 결정 로직과 동일.
+
+    공시 마감일 + 1.5개월 여유로 직전 분기 보고서 사용:
+      1~5월  : 직전 연도 3Q
+      6월    : 직전 연도 연간 (4Q)
+      7~8월  : 당해 1Q
+      9~11월 : 당해 2Q (반기)
+      12월   : 당해 3Q
+    """
+    ref = pd.Timestamp(as_of_date)
+    y, m = ref.year, ref.month
+    if m <= 5:   return y - 1, 3
+    if m <= 6:   return y - 1, 4
+    if m <= 8:   return y,     1
+    if m <= 11:  return y,     2
+    return y, 3
+
+
+def _prefetch_financials(tickers: list, rebal_dates: list, verbose: bool = True):
+    """
+    백테스트 시작 전 모든 리밸런싱 날짜가 필요로 하는 분기 보고서를 일괄 수집.
+    같은 분기를 여러 리밸런싱 시점이 공유할 때 캐시 1회 생성 후 재활용 가능하게 함.
+
+    PCR_TTM 팩터가 활성이면 CF TTM 역산용 연간 보고서도 추가 수집.
+    """
+    # 필요한 (year, quarter) 조합 수집
+    needed = set()
+    for date_str in rebal_dates:
+        needed.add(_resolve_fin_quarter(date_str))
+
+    # PCR_TTM 활성이면 분기 보고서마다 fin_year - 1 연간도 필요
+    if 'PCR_TTM' in config.FACTORS:
+        ann_needed = set()
+        for (fy, fq) in needed:
+            if fq != 4:
+                ann_needed.add((fy - 1, 4))
+        needed |= ann_needed
+
+    # 분기 시간순 정렬
+    needed_sorted = sorted(needed)
+
+    if verbose:
+        print(f'\n[사전 수집] 필요한 보고서 {len(needed_sorted)}종 일괄 수집')
+        for (y, q) in needed_sorted:
+            label = '연간' if q == 4 else f'Q{q}'
+            print(f'  - {y}{label}')
+
+    for i, (year, quarter) in enumerate(needed_sorted, 1):
+        if verbose:
+            label = '연간' if quarter == 4 else f'Q{quarter}'
+            print(f'\n  [{i}/{len(needed_sorted)}] {year}{label} 수집...')
+        get_financial_batch(
+            tickers=tickers,
+            year=year,
+            quarter=quarter,
+            use_cache=True,
+            verbose=verbose,
+        )
 
 
 # ============================================================================
@@ -176,10 +243,29 @@ def run_backtest(
         print('=' * 65)
 
     # -------------------------------------------------------------------------
-    # [2] 각 리밸런싱 시점마다 Universe + 스코어링 + TOP_N + 비중
+    # [2a] 사전 수집 — 필요한 모든 DART 분기 일괄 수집 (캐시 적중률 극대화)
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[1/6] 시점별 Universe 구성 + 팩터 스코어링 ({len(rebal_dates)}회)...')
+        print(f'\n[1/7] 사전 DART 보고서 일괄 수집...')
+
+    # tickers 후보: 현재 시점 Universe 종목 리스트로 일괄 수집
+    try:
+        seed_universe = get_universe(
+            add_technicals=False,
+            add_financials=False,
+            use_cache=True,
+            verbose=False,
+        )
+        seed_tickers = list(seed_universe.index)
+        _prefetch_financials(seed_tickers, rebal_dates, verbose=verbose)
+    except Exception as e:
+        logger.warning('사전 수집 실패 (계속 진행): %s', e)
+
+    # -------------------------------------------------------------------------
+    # [2b] 각 리밸런싱 시점마다 Universe + 스코어링 + TOP_N + 비중
+    # -------------------------------------------------------------------------
+    if verbose:
+        print(f'\n[2/7] 시점별 Universe 구성 + 팩터 스코어링 ({len(rebal_dates)}회)...')
 
     history = {}      # {date_str: {ticker: weight}}
     all_tickers = set()
@@ -226,7 +312,7 @@ def run_backtest(
     # [3] 가격 매트릭스
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[2/6] 가격 데이터 수집 ({len(all_tickers)}개 종목)...')
+        print(f'\n[3/7] 가격 데이터 수집 ({len(all_tickers)}개 종목)...')
 
     price_matrix = get_price_matrix(all_tickers, start, end, use_cache=True)
     if price_matrix.empty:
@@ -244,7 +330,7 @@ def run_backtest(
     # [4] 비중 DataFrame 구성
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[3/6] 비중 행렬 구성...')
+        print(f'\n[4/7] 비중 행렬 구성...')
 
     size_df = _build_size_df(price_matrix.index, list(price_matrix.columns),
                              history, rebal_dates)
@@ -257,7 +343,7 @@ def run_backtest(
     # [5] vectorbt 시뮬레이션
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[4/6] vectorbt 시뮬레이션...')
+        print(f'\n[5/7] vectorbt 시뮬레이션...')
 
     try:
         pf = vbt.Portfolio.from_orders(
@@ -280,7 +366,7 @@ def run_backtest(
     # [6] 성과 지표
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[5/6] 성과 지표 계산...')
+        print(f'\n[6/7] 성과 지표 계산...')
 
     returns = pf.returns()
     total_return = float(pf.total_return())
@@ -332,7 +418,7 @@ def run_backtest(
     # [7] CSV 저장
     # -------------------------------------------------------------------------
     if verbose:
-        print(f'\n[6/6] 결과 저장...')
+        print(f'\n[7/7] 결과 저장...')
 
     os.makedirs(config.REPORT_DIR, exist_ok=True)
     today = datetime.now().strftime('%Y%m%d')

@@ -327,8 +327,13 @@ def _add_financials(df: pd.DataFrame, as_of_date: str, use_cache: bool, verbose:
     # [CF TTM 역산] DART CF는 thstrm_add_amount 미제공 -> 직접 역산
     # operating_cf_ttm = operating_cf(분기누적) + 전년연간 - 전년동기누적(operating_cf_prev)
     # 분기보고서가 연간(quarter==4)이면 분기누적 자체가 TTM
+    #
+    # 비용 최적화: PCR_TTM 팩터가 활성(config.FACTORS에 포함)일 때만 수행.
+    #   - 활성 아니면 전년 연간 보고서 1700+종목 추가 수집(~5~10분) 생략
+    #   - 첫 백테스트에서 PCR_TTM 비활성이라면 이 단계가 가장 큰 시간 절약
     # -------------------------------------------------------------------------
-    if 'operating_cf_ttm' not in df.columns and 'operating_cf' in df.columns:
+    cf_ttm_needed = 'PCR_TTM' in config.FACTORS
+    if 'operating_cf_ttm' not in df.columns and 'operating_cf' in df.columns and cf_ttm_needed:
         if fin_quarter == 4:
             df['operating_cf_ttm'] = df['operating_cf']
         else:
@@ -347,6 +352,8 @@ def _add_financials(df: pd.DataFrame, as_of_date: str, use_cache: bool, verbose:
                 # operating_cf_prev = 분기 보고서의 frmtrm_q (전년 동기 누적)
                 prev_q = df.get('operating_cf_prev', pd.Series(np.nan, index=df.index))
                 df['operating_cf_ttm'] = df['operating_cf'] + ann_cf - prev_q
+    elif not cf_ttm_needed and verbose:
+        print(f'  [SKIP] PCR_TTM 비활성 - CF TTM 역산 생략 (시간 절약)')
 
     valid_q    = df['sales'].notna().sum()        if 'sales' in df.columns        else 0
     valid_ttm  = df['sales_ttm'].notna().sum()    if 'sales_ttm' in df.columns    else 0
