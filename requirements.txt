@@ -9,3 +9,5 @@ matplotlib
 mplfinance
 requests
 tzdata
+ta
+yfinance
