@@ -73,8 +73,8 @@ richman/
 
 **현재 AI 피처 (config.AI_FEATURES):**
 ```python
-['RSI', 'Disparity', 'BandWidth', 'Volume_Ratio']  # 현재 운용 중 (v8 경량화)
-# 백업 v8 전체: RSI, Disparity, ADX, BandWidth, RSI_Slope, BB_Width_Pct, MACD_Hist, Stoch_Cross
+# v10 (현재): Volume_Ratio → Volume_Spike(>2 이진)로 교체 후
+['RSI', 'Disparity', 'BandWidth', 'Volume_Spike', 'Slow_K', 'Slow_D']
 ```
 
 ---
@@ -180,7 +180,7 @@ score = (avg_return_pct × 100) × win_rate × √trade_count
 | 우선순위 | 과제 | 상태 |
 |---|---|---|
 | 1 | 스케줄러 자동화 (screener + alert cron) | 🔜 다음 |
-| 2 | Volume_Ratio AI 피처 추가 (9번째) | 🔜 다음 |
+| 2 | Volume_Ratio AI 피처 점검 → Volume_Spike로 교체 | ✅ 완료 (2026-05-14) |
 | 3 | 자동매매 Phase A (잔고/현재가 읽기 전용) | 📋 계획 |
 | 4 | 자동매매 Phase B (모의매매) | 📋 계획 |
 | 5 | 자동매매 Phase C (실전 — 3개월 검증 후) | 📋 계획 |
