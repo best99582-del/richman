@@ -31,7 +31,7 @@ screener의 시총 필터가 실제로 작동하지 않는 문제 해결 + 중�
 | **2** | `get_nasdaq_universe()` → `get_universe()` 개편 (NASDAQ+NYSE, 업종 제외) | ✅ 코드 완료 (검증은 캐시 빌드 후) | [phase_2.md](phase_2.md) |
 | **3** | config 상수 조정 + 거래대금 필터로 교체 (구 phase 4 흡수) | ✅ 코드 완료 (검증은 캐시 빌드 후) | [phase_3.md](phase_3.md) |
 | ~~4~~ | ~~`filter_hot_stocks` 거래대금 필터 추가~~ | ✅ Phase 3에 흡수됨 | — |
-| **5** | 통합 검증 (통과 종목 분포 / TICKERS 호환 / 회귀 점검) | ⏳ 대기 (캐시 빌드 완료 후) | [phase_5.md](phase_5.md) |
+| **5** | 통합 검증 (통과 종목 분포 / TICKERS 호환 / 회귀 점검) | ✅ **완료** (V1~V6 모두 통과, 2026-05-14) | [phase_5.md](phase_5.md) |
 | 6 (보조) | 백업 파일 정리 계획 — git 없는 환경이라 신중히 archive로만 이동 | 🟡 계획 작성됨, 실행은 phase 5 후 | [phase_6_backups.md](phase_6_backups.md) |
 
 ## 작업 원칙
