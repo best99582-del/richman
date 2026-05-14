@@ -188,7 +188,9 @@ SCREENER_MIN_DATA_DAYS = 250       # AI 학습을 위한 최소 데이터 일수
 SCREENER_MIN_MARKET_CAP = 1e9      # 최소 시가총액 ($1B) — 조작/유동성 위험 회피
 SCREENER_MAX_MARKET_CAP = 20e9     # 최대 시가총액 ($20B) — 이 위는 +10% 급등 구조적으로 드묾
 # v9.0: 0.50→0.55 상향 (기저 양성비 대비 실질적 필터 효과 확보)
-SCREENER_MIN_PRECISION = 0.50    # Light 정밀도 하한 — 이 미만이면 predict.py 진입 차단
+# v10.2: 평가 메트릭 일원화 — 이 임계값은 Light(70/30 holdout) 기준.
+#        predict.Analyze_Full의 CV(5-Fold) 정밀도와는 다른 분포 — 직접 비교 금지.
+SCREENER_MIN_PRECISION = 0.50    # Light(holdout 70/30) 정밀도 하한 — 이 미만이면 predict.py 진입 차단
 
 # 시가총액 캐싱 (market_cap_cache.py)
 # fdr.StockListing이 MarketCap을 제공하지 않아 yfinance fast_info로 별도 조회.

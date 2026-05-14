@@ -41,6 +41,7 @@ screener의 시총 필터가 실제로 작동하지 않는 문제 해결 + 중�
 | 후속 1 | ta 라이브러리 부분 교체 (RSI/MACD/BB/ATR/ADX) | ✅ 완료 | (커밋 d7bf392) |
 | 후속 2 | Volume_Ratio → Volume_Spike 교체 | ✅ 완료 (2026-05-14) | [phase_vr_spike.md](phase_vr_spike.md) |
 | 후속 3 | Optuna 재최적화 (Volume_Spike+Slow_K/D 반영) | ✅ 완료 (2026-05-14, 합계 +777%p) | [phase_optuna_rerun.md](phase_optuna_rerun.md) |
+| 후속 4 | 정밀도 평가 메트릭 일원화 (screener↔predict) | ✅ 완료 (2026-05-14) | [phase_metric_unify.md](phase_metric_unify.md) |
 
 ## 작업 원칙
 

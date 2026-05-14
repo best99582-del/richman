@@ -23,7 +23,7 @@ from xgboost import XGBClassifier
 import config
 from indicators import Make_Indicators
 from kelly import Get_Position_Size, Calculate_Reference_Kelly
-from predict import Create_Windowed_Data
+from predict import Create_Windowed_Data, holdout_precision
 from data_loader import load_ohlcv
 from market_cap_cache import get_screener_data
 
@@ -297,36 +297,16 @@ def _quick_analyze(ticker: str, df_raw: pd.DataFrame) -> dict | None:
 
         current_price = df['Close'].iloc[-1]
 
-        # --- [2] 70/30 split 정밀도 검증 ---
-        X_all, y_all = Create_Windowed_Data(df, FEATURES, WINDOW_SIZE, TARGET_PCT, FORECAST_PERIOD)
-        if len(set(y_all)) < 2 or len(y_all) < 100:
-            return None
-
-        split    = int(len(X_all) * 0.7)
-        gap      = FORECAST_PERIOD
-        X_train  = X_all[:split - gap]
-        y_train  = y_all[:split - gap]
-        X_test   = X_all[split:]
-        y_test   = y_all[split:]
-
-        if len(set(y_train)) < 2 or len(X_test) < 20:
-            return None
-
-        n_pos  = np.sum(y_train == 1)
-        weight = float(np.sum(y_train == 0)) / n_pos if n_pos > 0 else 1.0
-
-        model = _make_model(weight)
-        model.fit(X_train, y_train)
-
-        test_preds = (model.predict_proba(X_test)[:, 1] >= AI_FILTER).astype(int)
-        tp = int(np.sum((test_preds == 1) & (y_test == 1)))
-        fp = int(np.sum((test_preds == 1) & (y_test == 0)))
-        light_precision = (tp + 1) / (tp + fp + 2)  # Laplace 스무딩
-
+        # --- [2] Light 정밀도 (70/30 holdout) — 공용 헬퍼 호출 ---
+        light_precision, light_signals = holdout_precision(df)
         if light_precision < config.SCREENER_MIN_PRECISION:
             return None
 
         # --- [3] 전체 데이터 재학습 + 현재 확률 예측 ---
+        X_all, y_all = Create_Windowed_Data(df, FEATURES, WINDOW_SIZE, TARGET_PCT, FORECAST_PERIOD)
+        if len(set(y_all)) < 2 or len(y_all) < 100:
+            return None
+
         n_pos_all  = np.sum(y_all == 1)
         weight_all = float(np.sum(y_all == 0)) / n_pos_all if n_pos_all > 0 else 1.0
 
@@ -358,7 +338,10 @@ def _quick_analyze(ticker: str, df_raw: pd.DataFrame) -> dict | None:
         return {
             'Ticker':        ticker,
             'Prob':          prob,
-            'Hist_Precision': round(light_precision, 3),
+            'Light_Precision': round(light_precision, 3),     # 70/30 holdout 정밀도 (정식)
+            'Hist_Precision': round(light_precision, 3),       # 호환 별칭
+            'Eval_Method':   'holdout_70_30',
+            'Light_Signals': light_signals,
             'Current_Price': current_price,
             'ATR':           round(current_atr, 4),
             'Stop_Price':    stop_price,
@@ -450,7 +433,7 @@ def _print_dashboard(picks: list, total_scanned: int, elapsed: float):
         print(f"\n{'─' * 95}")
         print(f"  #{rank}  {p['Ticker']:<6}  |  {verdict}  |  현재가: ${p['Current_Price']:,.2f}")
         print(f"{'─' * 95}")
-        print(f"  📡 AI확률: {p['Prob']:.1%}  |  정밀도: {p['Hist_Precision']:.1%}  |  "
+        print(f"  📡 AI확률: {p['Prob']:.1%}  |  Light정밀도(70/30): {p['Light_Precision']:.1%}  |  "
               f"거래량: ×{p['Vol_Ratio']:.1f} {vol_status}")
         print(f"  📊 RSI: {tech.get('RSI', '-')} ({tech.get('RSI_Tag', '')})  |  "
               f"Disparity: {tech.get('Disparity', '-')}%  |  "

@@ -264,6 +264,10 @@ if __name__ == "__main__":
     print(f"   대상: {TEST_TICKERS}")
     print(f"   피처: {config.AI_FEATURES}")
     print(f"   타겟: {config.AI_TARGET_PCT}% / {config.AI_FORECAST_PERIOD}일 (Close 기준)")
+    print(f"   평가 방식:")
+    print(f"     - AI 신호 부착: Add_AI_Signals (Walk-Forward, holdout=20%)")
+    print(f"     - 성과 측정: Backtest_Strategy (trade-by-trade, 미래누수 없음)")
+    print(f"     - precision/recall 등 분류 메트릭은 test_predict.py 의 CV/holdout 비교 참조")
     print(f"   ⏳ 약 20~30분 소요\n")
 
     stock_data = _prepare_all()

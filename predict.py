@@ -71,6 +71,75 @@ def _laplace_precision(preds, y_true):
     hits = np.sum((preds == 1) & (y_true == 1))
     return (hits + 1) / (total + 2)
 
+def cv_precision(df, features=None, window=None, target_pct=None,
+                 forecast_period=None, ai_filter=None, n_splits=5):
+    """TimeSeriesSplit n-Fold 평균 precision — Deep 분석용 (정확하지만 느림).
+
+    각 fold에서 train 마지막 forecast_period일을 gap으로 제거하여 타겟 누수 방지.
+    신호 0개인 fold는 평균에서 스킵.
+
+    Returns:
+        tuple[float, int]: (평균 precision, 누적 신호 수). 측정 불가 시 (0.5, 0).
+    """
+    features = features or FEATURES
+    window = window or WINDOW_SIZE
+    target_pct = target_pct or TARGET_PCT
+    forecast_period = forecast_period or FORECAST_PERIOD
+    ai_filter = ai_filter if ai_filter is not None else AI_FILTER
+
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    box, signals = [], 0
+    indices = np.arange(len(df))
+    for train_idx, test_idx in tscv.split(indices):
+        if len(train_idx) <= forecast_period + window:
+            continue
+        safe_train_idx = train_idx[:-forecast_period]
+        X_tr, y_tr = Create_Windowed_Data(df.iloc[safe_train_idx], features, window, target_pct, forecast_period)
+        X_te, y_te = Create_Windowed_Data(df.iloc[test_idx], features, window, target_pct, forecast_period)
+        if len(set(y_tr)) < 2 or len(y_tr) == 0 or len(y_te) == 0:
+            continue
+        model = _create_model(_calc_pos_weight(y_tr))
+        model.fit(X_tr, y_tr)
+        preds = (model.predict_proba(X_te)[:, 1] >= ai_filter).astype(int)
+        if np.sum(preds) > 0:
+            box.append(_laplace_precision(preds, y_te))
+            signals += int(np.sum(preds))
+    precision = round(float(np.mean(box)), 3) if box else 0.5
+    return precision, signals
+
+
+def holdout_precision(df, features=None, window=None, target_pct=None,
+                      forecast_period=None, ai_filter=None, split_ratio=0.7):
+    """단일 holdout split precision — Light 분석용 (빠르지만 분산 큼).
+
+    train과 test 사이에 forecast_period일 gap을 둬 타겟 누수 방지.
+
+    Returns:
+        tuple[float, int]: (precision, test 구간 신호 수). 측정 불가 시 (0.5, 0).
+    """
+    features = features or FEATURES
+    window = window or WINDOW_SIZE
+    target_pct = target_pct or TARGET_PCT
+    forecast_period = forecast_period or FORECAST_PERIOD
+    ai_filter = ai_filter if ai_filter is not None else AI_FILTER
+
+    X_all, y_all = Create_Windowed_Data(df, features, window, target_pct, forecast_period)
+    if len(set(y_all)) < 2 or len(y_all) < 100:
+        return 0.5, 0
+    split = int(len(X_all) * split_ratio)
+    gap = forecast_period
+    X_tr, y_tr = X_all[:split - gap], y_all[:split - gap]
+    X_te, y_te = X_all[split:], y_all[split:]
+    if len(set(y_tr)) < 2 or len(X_te) < 20:
+        return 0.5, 0
+    model = _create_model(_calc_pos_weight(y_tr))
+    model.fit(X_tr, y_tr)
+    preds = (model.predict_proba(X_te)[:, 1] >= ai_filter).astype(int)
+    signals = int(np.sum(preds))
+    precision = round(_laplace_precision(preds, y_te), 3)
+    return precision, signals
+
+
 def Create_Windowed_Data(data, features, window, target_pct, forecast_period):
     """
     XGBoost용 슬라이딩 윈도우 학습 데이터 생성.
@@ -134,38 +203,8 @@ def Analyze_Full(ticker: str, df_input: pd.DataFrame = None) -> dict:
             print(f"  ⚠️ {ticker}: 데이터 부족 ({len(df)}일)")
             return None
 
-        # --- [3] 5-Fold 교차검증 (풀 — 정밀도 측정) ---
-        tscv = TimeSeriesSplit(n_splits=5)
-        precision_box = []
-        signal_counts = 0
-
-        df_indices = np.arange(len(df))
-        for train_idx, test_idx in tscv.split(df_indices):
-            # 🔧 train 마지막 FORECAST_PERIOD일 제거 (gap)
-            if len(train_idx) <= FORECAST_PERIOD + WINDOW_SIZE:
-                continue
-            safe_train_idx = train_idx[:-FORECAST_PERIOD]
-
-            X_train, y_train = Create_Windowed_Data(
-                df.iloc[safe_train_idx], FEATURES, WINDOW_SIZE, TARGET_PCT, FORECAST_PERIOD
-            )
-            X_test, y_test = Create_Windowed_Data(
-                df.iloc[test_idx], FEATURES, WINDOW_SIZE, TARGET_PCT, FORECAST_PERIOD
-            )
-
-            if len(set(y_train)) < 2 or len(y_train) == 0 or len(y_test) == 0:
-                continue
-
-            model = _create_model(_calc_pos_weight(y_train))
-            model.fit(X_train, y_train)
-            probs = model.predict_proba(X_test)[:, 1]
-            preds = (probs >= AI_FILTER).astype(int)
-
-            if np.sum(preds) > 0:
-                precision_box.append(_laplace_precision(preds, y_test))
-                signal_counts += int(np.sum(preds))
-
-        hist_precision = round(np.mean(precision_box), 3) if precision_box else 0.5
+        # --- [3] 5-Fold 교차검증 — 공용 헬퍼 호출 ---
+        hist_precision, signal_counts = cv_precision(df)
 
         # --- [4] 최종 모델 + 오늘 예측 ---
         X_all, y_all = Create_Windowed_Data(
@@ -219,7 +258,9 @@ def Analyze_Full(ticker: str, df_input: pd.DataFrame = None) -> dict:
         return {
             'Ticker': ticker,
             'Prob': final_prob,
-            'Hist_Precision': hist_precision,
+            'CV_Precision': hist_precision,         # 5-Fold 교차검증 정밀도 (정식)
+            'Hist_Precision': hist_precision,       # 호환 별칭 (trade_journal/alert 등 기존 호출처용)
+            'Eval_Method': 'cv_5fold',
             'Signals': signal_counts,
             'Current_Price': current_price,
             'Last_Bar_Date': df.index[-1].strftime('%Y-%m-%d') if hasattr(df.index[-1], 'strftime') else str(df.index[-1]),
@@ -319,7 +360,7 @@ def _print_deep_dashboard(picks: list, elapsed: float):
 
         # [상단] AI + 신뢰도
         print(f"  📡 AI확률: {p['Prob']:.1%}  |  "
-              f"모델정밀도: {p['Hist_Precision']:.1%}  |  "
+              f"CV정밀도(5-Fold): {p['CV_Precision']:.1%}  |  "
               f"과거신호: {p['Signals']}회")
 
         # [중단] 가격 + 리스크

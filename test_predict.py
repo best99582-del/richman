@@ -4,7 +4,10 @@
 import numpy as np
 
 from indicators import Make_Indicators
-from predict import Analyze_Full, Add_AI_Signals, Create_Windowed_Data, _create_model, _calc_pos_weight
+from predict import (
+    Analyze_Full, Add_AI_Signals, Create_Windowed_Data,
+    _create_model, _calc_pos_weight, holdout_precision,
+)
 import config
 from data_loader import load_ohlcv
 
@@ -33,15 +36,18 @@ def _prepare_all() -> dict:
 # [검증 1] AI 예측이 무작위가 아닌지 확인
 # ============================================================================
 
-def test_ai_not_random():
+def test_ai_not_random(stock_data: dict):
     """
     Analyze_Full() 전체 파이프라인 실행으로 비랜덤성 확인.
     확률이 0.45~0.55 수렴이면 모델이 아무것도 학습하지 못한 것.
+
+    추가: 같은 종목에 holdout_precision(70/30)도 동시 측정해 두 정밀도의 차이(Δ)를
+          보고한다. 차이가 크면(예: 0.10+) screener/predict 게이트가 분기 의존적임을 시사.
     ⚠️ 5-Fold CV 포함 — 종목당 약 30초 소요
     """
     print("\n" + "="*70)
-    print("🔬 [AI 검증 1] 예측이 무작위가 아닌지 확인")
-    print("   ⚠️ 종목당 ~30초 소요 (5-Fold CV)")
+    print("🔬 [AI 검증 1] 예측이 무작위가 아닌지 확인 — CV vs Holdout 비교")
+    print("   ⚠️ 종목당 ~30초 소요 (5-Fold CV + 70/30 holdout)")
     print("="*70)
 
     for ticker in TEST_TICKERS:
@@ -51,17 +57,30 @@ def test_ai_not_random():
                 print(f"  {ticker}: ⚠️ 분석 실패")
                 continue
 
-            prob  = result['Prob']
-            prec  = result['Hist_Precision']
-            sigs  = result['Signals']
+            prob    = result['Prob']
+            cv_prec = result['CV_Precision']
+            sigs    = result['Signals']
+
+            # 같은 데이터로 holdout 정밀도 측정 (Light 모드 비교용)
+            df = stock_data.get(ticker)
+            if df is not None:
+                ho_prec, ho_sigs = holdout_precision(df)
+            else:
+                ho_prec, ho_sigs = 0.5, 0
+            delta = cv_prec - ho_prec
 
             status = "✅" if 0.1 < prob < 0.95 else "⚠️ 극단값 (과적합 의심)"
-            print(f"  {ticker}: AI확률={prob:.3f} | 정밀도={prec:.3f} | 신호={sigs}회 | {status}")
+            consistency = "⚠️ 분기 의존" if abs(delta) >= 0.10 else "✅ 일관"
+            print(f"  {ticker}: AI확률={prob:.3f} | "
+                  f"CV(5-Fold)={cv_prec:.3f} ({sigs}회) | "
+                  f"Holdout(70/30)={ho_prec:.3f} ({ho_sigs}회) | "
+                  f"Δ={delta:+.3f} {consistency} | {status}")
         except Exception as e:
             print(f"  {ticker}: ⚠️ 에러: {e}")
 
     print(f"\n  ℹ️ 0.45~0.55 수렴 → 학습 실패")
     print(f"  ℹ️ 0.95+ → 과적합   |   정밀도 0.5 미만 → 역방향 예측")
+    print(f"  ℹ️ Δ(CV−Holdout) |.10|+ → 평가 분기에 따라 결과 크게 달라짐 (신호 불안정)")
 
 
 # ============================================================================
@@ -222,7 +241,7 @@ if __name__ == "__main__":
     print("\n⏳ 공통 데이터 전처리 중...")
     stock_data = _prepare_all()
 
-    test_ai_not_random()                  # [1] AI 비랜덤성 확인 (느림 — Analyze_Full)
+    test_ai_not_random(stock_data)        # [1] AI 비랜덤성 확인 (느림 — Analyze_Full + holdout 비교)
     test_class_balance(stock_data)        # [2] 클래스 균형
     test_feature_importance(stock_data)   # [3] 피처 중요도
     test_crash_guard()                    # [4] 폭락 방어 점검
