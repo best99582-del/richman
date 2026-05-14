@@ -1,14 +1,28 @@
-# 🌌 [퀀트 유니버스] Richman 프로젝트 마스터 가이드 (v8.x 통합본)
+# 🌌 [퀀트 유니버스] Richman 프로젝트 마스터 가이드 (v10.2 통합본)
 
 > **본 문서는 Richman 프로젝트의 헌법이며, 모든 개발 작업은 이 문서의 지침 아래 수행됩니다.**
 >
-> **v8.x 변경 요약**
-> - GMM 국면 분기 전략 제거 → 통합 단일 전략으로 단순화
-> - AI 타겟 정의 변경: High any → Close max (실현 가능한 종가 기준)
-> - AI 피처 경량화: 8개 → 4개 (RSI, Disparity, BandWidth, Volume_Ratio)
-> - Walk-Forward 정밀도 holdout 분리 측정 (정밀도 부풀림 방지)
-> - v9.1 Sensitivity 재실행 반영 (AI_FILTER 0.55, RSI_BUY 35, TRAILING_ATR_MULT 5.0)
-> - 진단 도구 추가: test_predict.py, test_sensitivity.py, feature_experiment.py
+> **v10.2 변경 요약 (2026-05-14)**
+> - **AI 타겟 정의 재캘리브레이션:** FP 7일→**10일**, TP 10%→**7%** (phase_signal_grid)
+> - **AI_FILTER:** 0.50→**0.55** (헌법 명시값 회복, phase_filter_calib)
+> - **BB_SQUEEZE_RATIO:** 1.68→**1.50** (test_sensitivity BB sweep)
+> - **AI_Prob 디폴트 버그 수정:** Add_AI_Signals 디폴트 0.5→0.0 (학습 전 구간이 AI_FILTER=0.50 경계와 일치해 매수 후보로 들어가던 잠재 문제)
+> - **Add_AI_Signals 시그니처 확장:** target_pct/forecast_period/ai_filter 인자 추가 → test_sensitivity의 FP/TP sweep 가능
+> - **평가 메트릭 일원화:** cv_precision / holdout_precision 공용 헬퍼 (screener Light + predict CV 분리 명시)
+> - **screener 통과율 개선:** v10.1 2/5 → v10.2 3/5 통과 (RKLB 신규 통과, 평균 정밀도 대폭 상승)
+>
+> **v10.0~v10.1 주요 변경**
+> - Volume_Ratio → Volume_Spike(>2 이진) 교체 (극단값 노이즈 제거, 5종목 백테스트 +777%p)
+> - Optuna 재최적화로 매매 파라미터 5종 일괄 조정 (RSI_BUY 35→42, TRAILING 5.0→3.17 등)
+> - Screener 개편: NASDAQ+NYSE, $1B~$20B 시총, 거래대금 $20M+, 금융/리츠/펀드 제외
+> - ta 라이브러리 부분 도입 (RSI/MACD/BB/ATR/ADX) + ta.py→indicators.py 리네임
+>
+> **v8.x~v9.x 주요 변경 (역사적)**
+> - GMM 국면 분기 제거 → 통합 단일 전략
+> - AI 타겟 정의: High any → Close max
+> - AI 피처 경량화: 8개 → 6개 (현재)
+> - Walk-Forward 정밀도 holdout 분리 측정
+> - 진단 도구 도입: test_predict.py, test_sensitivity.py, feature_experiment.py
 
 ---
 
@@ -30,7 +44,7 @@
 *   **⚔️ Satellite (30%) — AI 기반 단기 스윙 매매 (본 시스템의 핵심)**
     *   `screener.py` (나스닥 중소형주 전수조사, Light 모드) → `predict.py` (XGBoost 5-Fold 정밀 검증, Deep 모드) 2단계 파이프라인으로 매매 대상 확정.
     *   **타겟 유니버스:** 나스닥 중소형주 (시가총액 $3B~$50B / 20일 평균 거래량 ≥ 2M / ATR 변동성 3~10% / 최소 250일 데이터)
-    *   **AI 엔진:** XGBoost (n_estimators=100, max_depth=2, lr=0.01) — 피처 6종(RSI · Disparity · BandWidth · Volume_Ratio · Slow_K · Slow_D)의 최근 3일 윈도우로 **7일 후 종가 +10% 상승 확률** 예측. CV Gap을 적용한 5-Fold 교차검증으로 정밀도 검증.
+    *   **AI 엔진:** XGBoost (n_estimators=100, max_depth=2, lr=0.01) — 피처 6종(RSI · Disparity · BandWidth · **Volume_Spike** · Slow_K · Slow_D)의 최근 3일 윈도우로 **10일 후 종가 +7% 상승 확률** 예측 (v10.2 그리드 재캘리브레이션). CV Gap을 적용한 5-Fold 교차검증으로 정밀도 검증.
     *   **진입 조건 (가중 투표, 합계 ≥ +0.7 시 매수):**
         *   **주 신호 (+1.0):** BB 상단 돌파 + BB 스퀴즈 탈출(BandWidth > 20일 평균 × 1.76)
         *   **보조 신호 (+0.7):** RSI < 35 (과매도 반등)
@@ -119,7 +133,7 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 ---
 
-## 🎯 Part 3. 매매 전략 (통합 단일 전략 — v8.x)
+## 🎯 Part 3. 매매 전략 (통합 단일 전략 — v10.2)
 
 **핵심 변화:** GMM 국면 분기 전략(Bull/Sideways/Bear별 다른 로직)을 제거하고 단일 통합 전략으로 일원화했습니다.
 
@@ -131,8 +145,8 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 | 조건 | 가중치 | 비고 |
 |---|---|---|
-| BB 상단 돌파 + BB_Squeeze | +1.0 | 주 신호 (모멘텀 돌파) |
-| RSI < `RSI_BUY` (35) | +0.7 | 보조 신호 (과매도 반등) |
+| BB 상단 돌파 + BB_Squeeze (`BB_SQUEEZE_RATIO`=1.50) | +1.0 | 주 신호 (모멘텀 돌파) |
+| RSI < `RSI_BUY` (**42**) | +0.7 | 보조 신호 (과매도 반등, v10.1 Optuna) |
 | MACD 골든크로스 | +0.3 | 확신도 보강 |
 | MACD 0선 상향 돌파 | +0.2 | 추세 확인 |
 | Divergence = -1 (약세) | -0.3 | 매수 점수 차감 |
@@ -141,13 +155,13 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 | 조건 | 가중치 | 비고 |
 |---|---|---|
-| RSI 전일 > `RSI_SELL`(85), 당일 < `RSI_SELL` | -1.0 | 모멘텀 소진 |
+| RSI 전일 > `RSI_SELL`(**84**), 당일 < `RSI_SELL` | -1.0 | 모멘텀 소진 (v10.1 Optuna) |
 | BB 하단 1.05배 접근 + MACD 데드크로스 | -1.0 | 하락 전환 확정 |
 | MACD 데드크로스 | -0.3 | 매도 보강 |
 | MACD 0선 하향 돌파 | -0.2 | 추세 약화 |
 
 **[게이트]**
-- AI_Prob < `AI_FILTER`(0.65) → 매수 가중치 강제 0 (AI 확신도 미달 시 매수 차단)
+- AI_Prob < `AI_FILTER`(**0.55**) → 매수 가중치 강제 0 (AI 확신도 미달 시 매수 차단, v10.2 헌법 회복)
 - 가중치 합계 ≥ +0.7 → 매수
 - 가중치 합계 ≤ -0.7 → 매도
 
@@ -155,13 +169,13 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 | 조건 | 행동 |
 |---|---|
-| 고점 대비 ATR × `TRAILING_ATR_MULT`(5.0) 하락 | 트레일링 스탑 (Chandelier Exit) |
+| 고점 대비 ATR × `TRAILING_ATR_MULT`(**3.17**) 하락 | 트레일링 스탑 (Chandelier Exit, v10.1 Optuna) |
 | 진입가 대비 ATR × `ATR_STOP_MULTIPLIER`(2.0) 하락 | 최초 손절가 터치 |
 | 매도 신호 발동 | 청산 |
 
 ---
 
-## 🔧 Part 4. 현재 운용 파라미터 (v8.x)
+## 🔧 Part 4. 현재 운용 파라미터 (v10.2)
 
 ### 지표 산출 (Layer 1 — 튜닝 가능)
 
@@ -177,11 +191,11 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 | 파라미터 | 현재 값 | 탐색 범위 | 설명 |
 |---|---|---|---|
-| `RSI_BUY` | **35** | 30~55 | 과매도 반등 진입 (v9.1 sensitivity: 35가 매매수·승률·수익 모두 최고) |
-| `RSI_SELL` | 85 | 65~85 | 과매수 이탈 매도 |
-| `BB_SQUEEZE_RATIO` | 1.76 | 1.2~3.0 | BB 폭 확대 배율 |
-| `AI_FILTER` | **0.65** | 0.50~0.70 | AI 확신도 임계값 (sensitivity 결과 0.65가 첫 양호값) |
-| `TRAILING_ATR_MULT` | **5.0** | 1.5~5.0 | Chandelier Exit 배수 (v9.1 sensitivity: 승률 66.7%, 수익 +53%) |
+| `RSI_BUY` | **42** | 30~55 | 과매도 반등 진입 (v10.1 Optuna 재최적화) |
+| `RSI_SELL` | **84** | 65~85 | 과매수 이탈 매도 (v10.1 Optuna) |
+| `BB_SQUEEZE_RATIO` | **1.50** | 1.2~3.0 | BB 폭 확대 배율 (v10.2 sweep) |
+| `AI_FILTER` | **0.55** | 0.50~0.70 | AI 확신도 임계값 (v10.2 헌법 회복) |
+| `TRAILING_ATR_MULT` | **3.17** | 1.5~5.0 | Chandelier Exit 배수 (v10.1 Optuna) |
 
 ### 리스크 / 자금 관리 (고정)
 
@@ -198,11 +212,11 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 | 파라미터 | 현재 값 | 설명 |
 |---|---|---|
-| `AI_FEATURES` | RSI, Disparity, BandWidth, Volume_Ratio, Slow_K, Slow_D | **6개 (현재)** |
+| `AI_FEATURES` | RSI, Disparity, BandWidth, **Volume_Spike**, Slow_K, Slow_D | 6개 (v10: Volume_Ratio→Volume_Spike 이진 플래그) |
 | `AI_WINDOW_SIZE` | 3 | 패턴 인식 윈도우 (일, v9.1: 5→3 과적합 완화) |
-| `AI_TARGET_PCT` | 10 | 목표 수익률 (%) |
-| `AI_FORECAST_PERIOD` | 7 | 예측 기간 (일, Close 기준) |
-| XGBoost 파라미터 | depth=2, reg_alpha=0.5, reg_lambda=2 | **v9.1 정규화 강화** |
+| `AI_TARGET_PCT` | **7** | 목표 수익률 (%) — v10.2 그리드 재캘리브레이션 (10→7) |
+| `AI_FORECAST_PERIOD` | **10** | 예측 기간 (일, Close 기준) — v10.2 (7→10) |
+| XGBoost 파라미터 | depth=2, reg_alpha=0.5, reg_lambda=2 | v9.1 정규화 강화 |
 
 ### 스크리너 (고정)
 
@@ -222,7 +236,9 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 
 ---
 
-## 📊 Part 5. ta.py 파생 지표 (총 12개)
+## 📊 Part 5. indicators.py 파생 지표 (총 13개)
+
+> v10: ta.py → indicators.py 리네임 + ta 라이브러리 부분 도입 (RSI/MACD/BB/ATR/ADX 표준 구현 대체)
 
 | # | 컬럼명 | 계산 방법 | 용도 |
 |---|---|---|---|
@@ -237,16 +253,19 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 | 9 | Price_Above_MA20 | Close > MA20 | 강세 확인 |
 | 10 | ADX | Average Directional Index | 추세 강도 |
 | 11 | ATR | Average True Range (Wilder's RMA) | 손절폭/트레일링 |
-| 12 | Volume_Ratio | 당일 거래량 / 20일 평균 | 거래량 폭발 감지 |
+| 12 | Volume_Ratio | 당일 거래량 / 20일 평균 | 거래량 폭발 감지 (분석 표시용) |
+| 13 | **Volume_Spike** | **Volume_Ratio > 2 이진 플래그** | **AI 피처 (v10: 원본 극단값 노이즈 제거)** |
 
 ---
 
-## 🔬 Part 6. 진단 및 실험 도구 (v8.x 신규)
+## 🔬 Part 6. 진단 및 실험 도구
 
 | 파일 | 역할 |
 |---|---|
-| `test_predict.py` | AI 비랜덤성 / 클래스 균형 / 피처 중요도 / 폭락 방어 4종 검증 |
-| `test_sensitivity.py` | 파라미터 단일 스윕 (AI_FILTER, RSI_BUY/SELL, BB_SQUEEZE, TRAILING) |
+| `test_predict.py` | AI 비랜덤성 / 클래스 균형 / 피처 중요도 / 폭락 방어 4종 검증 + CV vs Holdout 정밀도 비교 (v10.2) |
+| `test_sensitivity.py` | 파라미터 단일 스윕 (AI_FILTER, RSI_BUY/SELL, BB_SQUEEZE, TRAILING, **FP, TP** — v10.2 FP/TP sweep 추가) |
+| `test_signal_grid.py` | **(v10.2 신규)** AI_FORECAST_PERIOD × AI_TARGET_PCT 2차원 그리드 — 분류 정밀도 + 양성비 + 신호수 |
+| `test_filter_calib.py` | **(v10.2 신규)** AI_FILTER 분류 정밀도 sweep (BB/매매 영향 제외 순수 신호 품질) |
 | `feature_experiment.py` | 피처 세트 비교 (4개 / 5개 / 6개 / 8개) — 과적합 갭 측정 |
 
 ### 진단 → 튜닝 → 운용 워크플로우
@@ -271,7 +290,7 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 2. **Backup Policy:** 주요 로직 수정 시 `파일명_backup.py` 생성.
 3. **Look-ahead Bias 차단:** 미래 데이터 참조 금지. GMM은 Rolling Window로만 학습 (보존 함수).
 4. **CV Gap:** 교차검증 시 train 마지막 `FORECAST_PERIOD`일 제거 (타겟 누수 방지).
-5. **스케일 독립성:** AI 피처는 비율/지수 형태(RSI, ADX, 이격도, Volume_Ratio)만. 절대 주가 사용 금지.
+5. **스케일 독립성:** AI 피처는 비율/지수/이진 형태(RSI, ADX, 이격도, Volume_Spike)만. 절대 주가 사용 금지.
 6. **시각화 품질:** 직관적 시각화 요소 필수.
 7. **자동매매 안전 원칙:** 3개월 수동매매 수익 검증 전까지 실전 자동매매 착수 금지.
 8. **measurement vs production 모델 인지:** 정밀도 측정용 모델과 실제 예측용 모델이 다름을 인지. Hist_Precision은 절대적 성능 보장이 아닌 "과거 패턴이 잘 작동한 약한 증거".
@@ -286,11 +305,17 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 | 2 | 통합 전략 일원화 (GMM 제거) | ✅ v8.x | 국면 분기 제거, 단일 전략 |
 | 3 | Walk-Forward holdout 정밀도 측정 | ✅ v8.x | 자기 채점 부풀림 차단 |
 | 4 | 진단 도구 (test_predict / sensitivity) | ✅ v8.x | 4종 검증 + 5종 스윕 |
-| 5 | screener 실전 검증 | 🔜 진행 중 | 실제 종목 추출 후 매매 결과 추적 |
-| 6 | 스케줄러 자동화 | 🔜 다음 | screener + alert를 cron/작업스케줄러로 |
-| 7 | 자동매매 Phase A | 📋 계획 | 잔고 조회 + 현재가 (읽기 전용) |
-| 8 | 자동매매 Phase B | 📋 계획 | 모의매매(PAPER) |
-| 9 | 자동매매 Phase C | 📋 계획 | 실전매매 (3개월 검증 후) |
+| 5 | Screener 개편 (NASDAQ+NYSE, $1B~$20B, 거래대금 필터) | ✅ v10.0 | OHLCV 다운로드 21% 감소 |
+| 6 | Volume_Ratio → Volume_Spike 교체 | ✅ v10.0 | 극단값 노이즈 제거, 백테스트 +777%p |
+| 7 | Optuna 재최적화 | ✅ v10.1 | 매매 파라미터 5종 일괄 (RSI/BB/AI_FILTER/TRAILING) |
+| 8 | 정밀도 평가 메트릭 일원화 | ✅ v10.2 | cv_precision / holdout_precision 공용 헬퍼 |
+| 9 | FP×TP 그리드 캘리브레이션 + AI_FILTER 재조정 + BB sweep | ✅ v10.2 | FP=10, TP=7%, AI_FILTER=0.55, BB=1.50 |
+| 10 | Add_AI_Signals 디폴트 0.5→0.0 버그 수정 + 시그니처 확장 | ✅ v10.2 | 학습 전 구간 경계 문제 해결 |
+| 11 | screener 통과율 재측정 | ✅ v10.2 | 2/5 → 3/5 (RKLB 신규 통과, 평균 정밀도 큰 개선) |
+| 12 | 스케줄러 자동화 | 🔜 다음 | screener + alert를 cron/작업스케줄러로 |
+| 13 | 자동매매 Phase A | 📋 계획 | 잔고 조회 + 현재가 (읽기 전용) |
+| 14 | 자동매매 Phase B | 📋 계획 | 모의매매(PAPER) |
+| 15 | 자동매매 Phase C | 📋 계획 | 실전매매 (3개월 검증 후) |
 
 ---
 
@@ -300,7 +325,7 @@ python alert.py --add IONQ 30.00   # 수동 감시 추가
 richman/
 ├── config.py                # [1단계] 중앙 통제실
 ├── screener.py              # [2단계] 시장 전수조사 (Light AI)
-├── ta.py                    # [3단계] 지표 + GMM 보존 함수
+├── indicators.py            # [3단계] 지표 + GMM 보존 함수 (v10: ta.py → indicators.py 리네임)
 ├── predict.py               # [4단계] AI 정밀 분석 (Deep Scan)
 ├── kelly.py                 # [5단계] Half-Kelly 자금 관리
 ├── backtest.py              # [5단계] 매매 일지 백테스트

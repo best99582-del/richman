@@ -61,7 +61,7 @@ richman/
 | 파라미터 | 현재 값 | 설명 |
 |---|---|---|
 | `RSI_BUY` / `RSI_SELL` | 42 / 84 | RSI 매수/매도 기준 (v10.1 Optuna) |
-| `BB_SQUEEZE_RATIO` | 1.68 | 스퀴즈 탈출 판단 배율 (v10.1 Optuna) |
+| `BB_SQUEEZE_RATIO` | 1.50 | 스퀴즈 탈출 판단 배율 (v10.2 sweep) |
 | `ADX_THRESHOLD` | 0 (비활성) | ADX 횡보 보조 기준 (v8.1에서 제거됨) |
 | `AI_FILTER` | 0.55 | AI 확신도 매수 필터 (v10.2 헌법 회복) |
 | `TRAILING_ATR_MULT` | 3.17 | Chandelier Exit ATR 배수 (v10.1 Optuna) |
