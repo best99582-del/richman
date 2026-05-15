@@ -68,6 +68,8 @@ def _tech_summary(df: pd.DataFrame) -> dict:
     slow_k          = float(row.get('Slow_K', 50))
     slow_d          = float(row.get('Slow_D', 50))
     bandwidth       = float(row.get('BandWidth', 0))
+    bb_width_ma     = float(row.get('BB_Width_MA', 0))
+    bw_ratio        = (bandwidth / bb_width_ma) if bb_width_ma > 0 else 0.0
     bb_squeeze      = bool(row.get('BB_Squeeze', False))
     vol_ratio       = float(row.get('Volume_Ratio', 1.0))
     divergence      = int(row.get('Divergence', 0))
@@ -108,6 +110,7 @@ def _tech_summary(df: pd.DataFrame) -> dict:
         'Stoch_K':         round(slow_k, 1),
         'Stoch_D':         round(slow_d, 1),
         'BandWidth':       round(bandwidth, 4),
+        'BW_Ratio':        round(bw_ratio, 2),     # BandWidth / 20일 평균
         'Stoch_Cross':     stoch_cross,
         'BB_Squeeze':      bb_squeeze,
         'Vol_Ratio':       round(vol_ratio, 2),
@@ -473,9 +476,13 @@ def _print_dashboard(picks: list, total_scanned: int, elapsed: float):
         print(f"{'─' * 95}")
         print(f"  📡 AI확률: {p['Prob']:.1%}  |  Light정밀도(70/30): {p['Light_Precision']:.1%}  |  "
               f"거래량: ×{p['Vol_Ratio']:.1f} {vol_status}")
+        # BandWidth ratio 마커 (1.5+ 시 스퀴즈 탈출 시그널)
+        bw_ratio = tech.get('BW_Ratio', 0)
+        bw_marker = " 🔥" if bw_ratio >= config.BB_SQUEEZE_RATIO else ""
+        bw_str = f"{tech.get('BandWidth', '-')} (×{bw_ratio:.2f} of 20일평균{bw_marker})"
         print(f"  📊 RSI: {tech.get('RSI', '-')} ({tech.get('RSI_Tag', '')})  |  "
               f"Disparity: {tech.get('Disparity', '-')}%  |  "
-              f"BandWidth: {tech.get('BandWidth', '-')}")
+              f"BandWidth: {bw_str}")
         print(f"  📊 Stoch_K: {tech.get('Stoch_K', '-')}  |  "
               f"Stoch_D: {tech.get('Stoch_D', '-')}")
         if signals:
