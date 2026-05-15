@@ -24,6 +24,7 @@ import config
 from indicators import Make_Indicators
 from kelly import Get_Position_Size, Calculate_Reference_Kelly
 from predict import Create_Windowed_Data, holdout_precision
+from sector_cache import get_sectors
 from data_loader import load_ohlcv
 from market_cap_cache import get_screener_data
 
@@ -218,7 +219,21 @@ def get_universe(force_refresh_cache: bool = False) -> list:
     # 시총 큰 순서 정렬
     sorted_tickers = sorted(in_range.keys(), key=lambda t: in_range[t]['mc'], reverse=True)
     print(f"✅ 유니버스 {len(sorted_tickers)}개 추출 완료.")
-    return sorted_tickers
+    # in_range도 함께 반환 (Cap_Class/Exchange 표시용 메타)
+    return sorted_tickers, in_range
+
+
+def classify_cap(market_cap_usd: float) -> str:
+    """시가총액 기반 분류 (S&P/MSCI 통상 기준).
+
+    Small: < $2B    | Mid: $2B~$10B    | Large: $10B+
+    """
+    if market_cap_usd < 2e9:
+        return "Small"
+    elif market_cap_usd < 10e9:
+        return "Mid"
+    else:
+        return "Large"
 
 
 # ============================================================================
@@ -276,7 +291,7 @@ def filter_hot_stocks(tickers: list) -> dict:
 # [내부] 가벼운 AI 분석 (종목 1개, ~5초)
 # ============================================================================
 
-def _quick_analyze(ticker: str, df_raw: pd.DataFrame) -> dict | None:
+def _quick_analyze(ticker: str, df_raw: pd.DataFrame, meta: dict | None = None) -> dict | None:
     """
     screener 전용 Light AI 분석.
 
@@ -350,6 +365,11 @@ def _quick_analyze(ticker: str, df_raw: pd.DataFrame) -> dict | None:
             'Kelly_Weight_Ref': ref_kelly_weight,
             'Vol_Ratio':        vol_ratio,
             'Tech':          _tech_summary(df),
+            # 분류 정보 (시총 규모/거래소/섹터)
+            'Market_Cap':     (meta or {}).get('mc', 0),
+            'Cap_Class':      classify_cap((meta or {}).get('mc', 0)),
+            'Exchange':       (meta or {}).get('exchange', 'UNKNOWN'),
+            'Sector':         (meta or {}).get('sector', 'Unknown'),
         }
 
     except Exception as e:
@@ -361,12 +381,14 @@ def _quick_analyze(ticker: str, df_raw: pd.DataFrame) -> dict | None:
 # [3단계] AI 스캔 + 대시보드
 # ============================================================================
 
-def ai_scanner(candidates_data: dict) -> list:
+def ai_scanner(candidates_data: dict, screener_meta: dict | None = None) -> list:
     """
     1차 필터 통과 종목에 Light AI 분석을 수행하고 대시보드를 출력합니다.
 
     Args:
         candidates_data: filter_hot_stocks() 반환 {티커: DataFrame}
+        screener_meta: get_universe() 반환 메타 {티커: {mc, exchange, turnover, ...}}.
+            None이면 분류 정보 없이 표시.
 
     Returns:
         list: 분석 결과 리스트 (AI 확률 내림차순)
@@ -374,10 +396,15 @@ def ai_scanner(candidates_data: dict) -> list:
     total      = len(candidates_data)
     start_time = time.time()
     picks      = []
+    screener_meta = screener_meta or {}
 
     print(f"\n🌐 시장 현황: {_get_market_condition()}")
     print(f"🎯 [3단계] Light AI 스캔 ({total}개 종목, 종목당 ~5초)")
-    print(f"   모드: 1-Fold XGBoost + 기술지표 스냅샷\n")
+    print(f"   모드: 1-Fold XGBoost + 기술지표 스냅샷")
+
+    # 섹터 정보 일괄 조회 (캐시 우선)
+    sectors = get_sectors(list(candidates_data.keys()))
+    print()
 
     for i, (ticker, df_raw) in enumerate(candidates_data.items()):
         elapsed   = time.time() - start_time
@@ -385,7 +412,10 @@ def ai_scanner(candidates_data: dict) -> list:
         remaining = avg * (total - i - 1)
         print(f"  ⚡ ({i + 1}/{total}) {ticker}... [잔여 ~{remaining:.0f}초]", end='\r')
 
-        result = _quick_analyze(ticker, df_raw)
+        # 메타 합치기
+        meta = dict(screener_meta.get(ticker, {}))
+        meta['sector'] = sectors.get(ticker, 'Unknown')
+        result = _quick_analyze(ticker, df_raw, meta=meta)
         if result:
             picks.append(result)
 
@@ -430,8 +460,16 @@ def _print_dashboard(picks: list, total_scanned: int, elapsed: float):
         sig_count = tech.get('Signal_Count', 0)
         sig_bar   = "●" * sig_count + "○" * (_MAX_SIGNALS - sig_count)
 
+        # 분류 라벨 (시총 + 거래소 + 섹터)
+        mc_b = p.get('Market_Cap', 0) / 1e9
+        cap_class = p.get('Cap_Class', '-')
+        exchange = p.get('Exchange', '-')
+        sector = p.get('Sector', '-')
+        class_tag = f"{exchange} · {cap_class}-cap (${mc_b:.1f}B) · {sector}"
+
         print(f"\n{'─' * 95}")
         print(f"  #{rank}  {p['Ticker']:<6}  |  {verdict}  |  현재가: ${p['Current_Price']:,.2f}")
+        print(f"  🏷️ {class_tag}")
         print(f"{'─' * 95}")
         print(f"  📡 AI확률: {p['Prob']:.1%}  |  Light정밀도(70/30): {p['Light_Precision']:.1%}  |  "
               f"거래량: ×{p['Vol_Ratio']:.1f} {vol_status}")
@@ -469,11 +507,11 @@ def _print_dashboard(picks: list, total_scanned: int, elapsed: float):
 
 if __name__ == "__main__":
     start_time = time.time()
-    universe = get_universe()
+    universe, screener_meta = get_universe()
     candidates = filter_hot_stocks(universe)
 
     if candidates:
-        results = ai_scanner(candidates)
+        results = ai_scanner(candidates, screener_meta=screener_meta)
     else:
         print("⚠️ 조건에 맞는 종목이 없습니다.")
 

@@ -149,11 +149,20 @@ def _fetch_screener_data() -> dict:
             price = q.get('regularMarketPrice')
             if symbol and mc and avg_vol and price:
                 turnover = float(avg_vol) * float(price)
+                # exchange: NMS/NGM/NCM=NASDAQ 계열, NYQ=NYSE
+                exch_code = q.get('exchange', '')
+                if exch_code in ('NMS', 'NGM', 'NCM'):
+                    exchange = 'NASDAQ'
+                elif exch_code == 'NYQ':
+                    exchange = 'NYSE'
+                else:
+                    exchange = exch_code or 'UNKNOWN'
                 result[symbol] = {
                     'mc': float(mc),
                     'avg_vol_3m': float(avg_vol),
                     'price': float(price),
                     'turnover': turnover,
+                    'exchange': exchange,
                 }
 
         elapsed = time.time() - start
@@ -204,7 +213,7 @@ def get_screener_data(tickers: list, force_refresh: bool = False) -> dict:
     if not fresh:
         print("⚠️ screener API 실패 — 폴백은 시총만 가능 (거래량 정보 없음)")
         fallback_mc = _fetch_market_caps_per_ticker(tickers)
-        fresh = {t: {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0}
+        fresh = {t: {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0, 'exchange': 'UNKNOWN'}
                  for t, mc in fallback_mc.items()}
 
     _save_cache(path, fresh)
@@ -244,7 +253,7 @@ if __name__ == "__main__":
         cache = _load_cache(config.MARKET_CAP_CACHE_PATH)
         merged = dict(cache.get('data', {}))
         for t, mc in mc_only.items():
-            merged[t] = {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0}
+            merged[t] = {'mc': mc, 'avg_vol_3m': 0, 'price': 0, 'turnover': 0, 'exchange': 'UNKNOWN'}
         _save_cache(config.MARKET_CAP_CACHE_PATH, merged)
         result = mc_only
         print(f"\n📊 결과: {len(result)}개 시총 보충")

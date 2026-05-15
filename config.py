@@ -206,6 +206,12 @@ SCREENER_MIN_PRECISION = 0.50    # Light(holdout 70/30) 정밀도 하한 — 이
 MARKET_CAP_CACHE_PATH = 'market_cap_cache.json'
 MARKET_CAP_CACHE_DAYS = 7
 
+# 섹터 캐싱 (sector_cache.py)
+# screener API가 sector를 안 줘서 yfinance Ticker.info로 별도 조회.
+# 섹터는 거의 안 바뀌므로 30일 캐시.
+SECTOR_CACHE_PATH = 'sector_cache.json'
+SECTOR_CACHE_DAYS = 30
+
 # 유니버스 거래소 (FinanceDataReader StockListing 인자)
 SCREENER_EXCHANGES = ['NASDAQ', 'NYSE']
 

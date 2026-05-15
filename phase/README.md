@@ -45,6 +45,7 @@ screener의 시총 필터가 실제로 작동하지 않는 문제 해결 + 중�
 | 후속 5 | AI_FORECAST_PERIOD × AI_TARGET_PCT 그리드 캘리브레이션 | ✅ 완료 (2026-05-14, 추천 10일/7%) | [phase_signal_grid.md](phase_signal_grid.md) |
 | 후속 6 | AI_FILTER 재캘리브레이션 + Add_AI_Signals 버그 수정 + test_sensitivity 보완 | ✅ 완료 (2026-05-14, FP/TP/AI_FILTER 일괄 v10.2 반영) | [phase_filter_calib.md](phase_filter_calib.md) |
 | 후속 7 | screener 통과율 재측정 + BB_SQUEEZE_RATIO sweep + system_master_plan 동기화 | ✅ 완료 (2026-05-14, 3/5 통과, BB 1.68→1.50, 헌법 v10.2) | [phase_v10_2_finalize.md](phase_v10_2_finalize.md) |
+| 후속 8 | Screener 종목 분류 정보 표시 (시총/거래소/섹터) | ✅ 완료 (2026-05-15) | [phase_classification.md](phase_classification.md) |
 
 ## 작업 원칙
 
